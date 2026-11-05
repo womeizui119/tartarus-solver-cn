@@ -3,7 +3,7 @@
     <LangVersion>latest</LangVersion>
     <!-- The app's version (shown in its window and sent with bug reports): bump it for every build given to testers. -->
     <!-- 中文版：原版版本号后加一段中文版修订号（0.7.44.1 = 基于原版 0.7.44 的中文版第 1 版）。 -->
-    <Version>0.7.44.1</Version>
+    <Version>0.7.44.2</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>

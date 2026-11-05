@@ -66,6 +66,6 @@ public partial class App : Application
         AppLog.Write($"Error: {e.Exception}");
         // The app goes on: the player may send a report of it, with what was on screen.
         if (MainWindow is ControlWindow control && BugReports.Enabled) control.Report(e.Exception);
-        else MessageBox.Show(e.Exception.ToString(), "Tartarus Solver: error", MessageBoxButton.OK, MessageBoxImage.Error);
+        else MessageBox.Show(e.Exception.ToString(), Zh.AppName + "：出错了", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }

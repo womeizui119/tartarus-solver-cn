@@ -110,7 +110,7 @@ def download(version, name, dest):
 def package(version, zhver, bin_dir, out):
     out.mkdir(parents=True, exist_ok=True)
     template = (ROOT / "tools/zh/README-zh.txt").read_text(encoding="utf-8")
-    replace = {"TartarusSolver.dll"} | {p.name for p in bin_dir.glob("Tartarus.*.dll")}
+    replace = {"TartarusSolver.dll", "TartarusSolver.exe"} | {p.name for p in bin_dir.glob("Tartarus.*.dll")}
     license = (ROOT / "LICENSE").read_bytes()
     made = []
     for suffix, note in [("", RUNTIME_NEEDED), ("-full", RUNTIME_BUNDLED)]:
@@ -132,21 +132,36 @@ def package(version, zhver, bin_dir, out):
                     data = b"\xef\xbb\xbf" + readme.encode("utf-8")
                 else:
                     data = src.read(info)
-                dst.writestr(rel, data, zipfile.ZIP_DEFLATED)
-            dst.writestr("TartarusSolver/LICENSE.txt", license, zipfile.ZIP_DEFLATED)
+                dst.writestr(zh_name(rel), data, zipfile.ZIP_DEFLATED)
+            dst.writestr(f"{FOLDER}/LICENSE.txt", license, zipfile.ZIP_DEFLATED)
         check(official, target)
         made.append(target)
     return made
 
 
+FOLDER, EXE = "塔罗斯监狱求解器", "塔罗斯监狱求解器.exe"
+
+
+def zh_name(rel):
+    """中文版包里的路径：程序文件夹和 exe 用中文名（exe 只是启动器，启动的仍是 TartarusSolver.dll）。"""
+    parts = rel.split("/")
+    parts[0] = FOLDER
+    if len(parts) == 2 and parts[1] == "TartarusSolver.exe":
+        parts[1] = EXE
+    return "/".join(parts)
+
+
 def check(official, target):
     with zipfile.ZipFile(official) as a, zipfile.ZipFile(target) as b:
-        na = {i.filename.replace("\\", "/") for i in a.infolist() if not i.is_dir()}
+        na = {zh_name(i.filename.replace("\\", "/")) for i in a.infolist() if not i.is_dir()}
         nb = {i.filename.replace("\\", "/") for i in b.infolist() if not i.is_dir()}
-        if na | {"TartarusSolver/LICENSE.txt"} != nb:
-            sys.exit(f"{target.name}：文件清单和官方包不一致：{(na | {'TartarusSolver/LICENSE.txt'}) ^ nb}")
-        dll = b.read("TartarusSolver/TartarusSolver.dll")
-        res = b.read("TartarusSolver/zh-Hans/TartarusSolver.resources.dll")
+        na |= {f"{FOLDER}/LICENSE.txt"}
+        if na != nb:
+            sys.exit(f"{target.name}：文件清单和官方包不一致：{na ^ nb}")
+        dll = b.read(f"{FOLDER}/TartarusSolver.dll")
+        res = b.read(f"{FOLDER}/zh-Hans/TartarusSolver.resources.dll")
+        if "塔罗斯监狱求解器".encode("utf-16-le") not in b.read(f"{FOLDER}/{EXE}"):
+            sys.exit(f"{target.name}：exe 里没有中文名和图标")
         missing = [m for m in MARKERS if m.encode("utf-8") not in res and m.encode("utf-16-le") not in res]
         if missing:
             sys.exit(f"{target.name}：主程序里没有中文界面文字 {missing}")

@@ -95,16 +95,20 @@ public static class Updates
         string unpacked = Path.Combine(Staging, release.Version.ToString());
         await Task.Run(() => ZipFile.ExtractToDirectory(zip, unpacked), ct);
         File.Delete(zip);
-        // The zip holds one folder, TartarusSolver.
-        string app = Path.Combine(unpacked, "TartarusSolver");
-        if (!File.Exists(Path.Combine(app, "TartarusSolver.exe"))) throw new InvalidDataException("no TartarusSolver.exe in the zip");
+        // 压缩包里是一个程序文件夹（中文版叫“塔罗斯监狱求解器”，早先叫 TartarusSolver）。
+        string app = Directory.EnumerateDirectories(unpacked).FirstOrDefault(d => Exe(d) != null)
+            ?? throw new InvalidDataException("no program folder in the zip");
         return app;
     }
+
+    /// <summary>中文版：程序文件夹里的 exe，新名字优先（旧名字的 exe 也能用：它们启动的是同一个 TartarusSolver.dll）。</summary>
+    public static string? Exe(string folder) =>
+        new[] { "塔罗斯监狱求解器.exe", "TartarusSolver.exe" }.Select(n => Path.Combine(folder, n)).FirstOrDefault(File.Exists);
 
     /// <summary>Starts the new version (in <paramref name="app"/>) to put itself in this install's place once this one exits.</summary>
     public static void StartInstall(string app, IEnumerable<string> args)
     {
-        var start = new ProcessStartInfo(Path.Combine(app, "TartarusSolver.exe")) { UseShellExecute = false, WorkingDirectory = app };
+        var start = new ProcessStartInfo(Exe(app)!) { UseShellExecute = false, WorkingDirectory = app };
         start.ArgumentList.Add("--install-update");
         start.ArgumentList.Add(AppDir);
         start.ArgumentList.Add(Environment.ProcessId.ToString());
@@ -147,7 +151,7 @@ public static class Updates
                 }
             }
             Write($"Updated to {AppVersion.Number} in {target}");
-            var start = new ProcessStartInfo(Path.Combine(target, "TartarusSolver.exe")) { UseShellExecute = false, WorkingDirectory = target };
+            var start = new ProcessStartInfo(Exe(target) ?? Path.Combine(target, "TartarusSolver.exe")) { UseShellExecute = false, WorkingDirectory = target };
             foreach (var a in args.Skip(2)) start.ArgumentList.Add(a);
             Process.Start(start);
         }
@@ -155,7 +159,7 @@ public static class Updates
         {
             Write($"Update to {AppVersion.Number} not installed: {ex.Message}");
             System.Windows.MessageBox.Show($"Couldn't put version {AppVersion.Number} into {target}:\n{ex.Message}\n\nIt is unpacked in {AppDir}: copy it over by hand or run it from there.",
-                "Tartarus Solver: update", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                Zh.AppName + "：更新", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{AppDir}\"") { UseShellExecute = true });
         }
     }

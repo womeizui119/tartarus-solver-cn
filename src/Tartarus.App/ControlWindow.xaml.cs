@@ -339,7 +339,7 @@ public partial class ControlWindow : Window
         _warnedModelsGone = true;
         Log($"OCR models not found in {AppContext.BaseDirectory}");
         Dispatcher.BeginInvoke(() => MessageBox.Show(this, Strings.Main_FilesMissing,
-            "Tartarus Solver", MessageBoxButton.OK, MessageBoxImage.Warning), DispatcherPriority.ApplicationIdle);
+            Zh.AppName, MessageBoxButton.OK, MessageBoxImage.Warning), DispatcherPriority.ApplicationIdle);
     }
 
     /// <summary>
@@ -369,7 +369,7 @@ public partial class ControlWindow : Window
         _settings.UiLanguage = code;
         _settings.Save();
         if (Loc.Resolve(code) == Loc.Language) return;
-        if (MessageBox.Show(this, Loc.In(code, nameof(Strings.Language_RestartQuestion)), "Tartarus Solver",
+        if (MessageBox.Show(this, Loc.In(code, nameof(Strings.Language_RestartQuestion)), Zh.AppName,
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         // Once this one is down: the new one takes the hotkeys.
         if (Environment.ProcessPath is { } exe)
