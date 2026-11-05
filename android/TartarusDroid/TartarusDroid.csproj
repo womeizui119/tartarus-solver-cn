@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationId>com.zh.tartarussolver</ApplicationId>
     <ApplicationTitle>困兽玩法推理</ApplicationTitle>
-    <ApplicationVersion>14</ApplicationVersion>
-    <ApplicationDisplayVersion>1.4</ApplicationDisplayVersion>
+    <ApplicationVersion>15</ApplicationVersion>
+    <ApplicationDisplayVersion>1.5</ApplicationDisplayVersion>
     <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
     <TartarusAndroid>true</TartarusAndroid>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -28,11 +28,6 @@
   <!-- 安卓自带的 Android.App.GameState 和推算库的 GameState 同名：不自动引用 Android.App -->
   <ItemGroup>
     <Using Remove="Android.App" />
-  </ItemGroup>
-
-  <!-- Shizuku（可选，读游戏日志用）：只打包 Java 库，不生成 C# 绑定，代码里用反射调用 -->
-  <ItemGroup>
-    <AndroidLibrary Include="libs\*.aar" Bind="false" />
   </ItemGroup>
 
   <!-- 与电脑版共用：推算服务、中文名 -->

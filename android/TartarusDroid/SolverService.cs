@@ -66,9 +66,7 @@ public sealed class SolverService : Service
         _overlay.SaveClicked += () => Save(manual: true);
         _overlay.AutoSaveChanged += on => AutoSave = on;
         _overlay.StopClicked += StopAll;
-        _logReader = new LogReader(this);
-        _logReader.StateChanged += s => _ui.Post(() => _overlay?.SetMode(s));
-        _overlay.SetMode(_logReader.State);
+
 
         CreateDisplay();
         _worker = new Thread(Work) { IsBackground = true, Name = "solver" };
@@ -134,7 +132,7 @@ public sealed class SolverService : Service
         {
             ModelSetup.Prepare(this);
             Post(new Shown("准备中…", "正在加载识别和推算模型…", null, false, "准备中…"));
-            _pipeline = new Pipeline(() => _logReader?.Live);
+            _pipeline = new Pipeline();
             _pipeline.Trace += s => Saver.Log(this, s);
             _pipeline.Changed += Post;
             Post(new Shown("暂无", "进入塔罗斯监狱后，这里会写出该怎么走", null, false, "就绪"));
@@ -152,10 +150,12 @@ public sealed class SolverService : Service
             {
                 FollowRotation();
                 var frame = Grab();
+                // 画面静止时录屏不推新帧（切天过场之后、棋盘不动时都是这样），拿不到新帧就重复识别上一帧：
+                // 静止画面正是识别最准的时候（2026-11-06 实机：每结束一天就停住，切屏强制重绘后才恢复）
+                if (frame == null && _lastFrame != null && DateTime.Now - _lastFrameAt < TimeSpan.FromSeconds(30)) frame = _lastFrame;
                 if (frame != null)
                 {
-                    _lastFrame = frame;
-                    _lastFrameAt = DateTime.Now;
+                    if (!ReferenceEquals(frame, _lastFrame)) { _lastFrame = frame; _lastFrameAt = DateTime.Now; }
                     // 先存图再识别：识别出错也照样存（出问题的画面正是最需要的）
                     if (AutoSave && DateTime.Now - _lastAutoSave > TimeSpan.FromSeconds(3)) Save(manual: false);
                     if (frame.Width < frame.Height) Post(new Shown("请横屏", "游戏要横屏玩，求解器才能看清棋盘", null, false, "竖屏"));
@@ -255,7 +255,6 @@ public sealed class SolverService : Service
         return n > 0 && sum / (3.0 * n) < 4;
     }
 
-    private LogReader? _logReader;
     private DateTime _lastFrameAt = DateTime.Now, _lastSaveError = DateTime.MinValue;
     private int _savedCount;
 
@@ -264,7 +263,6 @@ public sealed class SolverService : Service
     public void StopAll()
     {
         _stop = true;
-        _logReader?.Dispose();
         _ui.Post(() =>
         {
             _overlay?.Hide();
