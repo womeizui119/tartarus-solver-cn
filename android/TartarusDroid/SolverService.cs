@@ -148,6 +148,7 @@ public sealed class SolverService : Service
                     // 先存图再识别：识别出错也照样存（出问题的画面正是最需要的）
                     if (AutoSave && DateTime.Now - _lastAutoSave > TimeSpan.FromSeconds(3)) Save(manual: false);
                     if (frame.Width < frame.Height) Post(new Shown("请横屏", "游戏要横屏玩，求解器才能看清棋盘", null, false, "竖屏"));
+                    else if (IsBlack(frame)) Post(new Shown("画面是黑的", "录屏只录到黑屏：请停止后重新打开，录屏弹窗里选“整个屏幕”；若仍是黑屏，可能是手机或游戏禁止录屏", null, false, "黑屏"));
                     else
                     {
                         try
@@ -233,6 +234,14 @@ public sealed class SolverService : Service
                 _ui.Post(() => _overlay?.Toast("存图失败：" + msg));
             }
         }
+    }
+
+    /// <summary>抽样看画面是不是几乎全黑（录到的是黑屏）。</summary>
+    private static bool IsBlack(Frame f)
+    {
+        long sum = 0; int n = 0;
+        for (int i = 0; i < f.Pixels.Length; i += 4 * 997) { sum += f.Pixels[i] + f.Pixels[i + 1] + f.Pixels[i + 2]; n++; }
+        return n > 0 && sum / (3.0 * n) < 4;
     }
 
     private DateTime _lastFrameAt = DateTime.Now, _lastSaveError = DateTime.MinValue;

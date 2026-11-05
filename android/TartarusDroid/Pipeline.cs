@@ -155,12 +155,9 @@ public sealed class Pipeline : IDisposable
         if (hint is not { Ranked: { Count: > 0 } ranked }) return new Shown(status.StartsWith("计算") ? "计算中…" : "暂无", status, null, false, status);
         var best = ranked[0];
         string main = Names.Ranked(hint, best);
-        var ties = ranked.Skip(1).Where(a => best.Mean - a.Mean < Hint.TieWithin).ToList();
-        var next = ranked.Skip(1 + ties.Count).FirstOrDefault();
-        string detail = ties.Count > 0 ? "同样好：" + string.Join("、", ties.Select(t => Names.Ranked(hint, t)))
-            : next != null ? "次选：" + Names.Ranked(hint, next) : "只有这一个选择";
-        if (best.Action.Kind is ActionKind.Consume or ActionKind.Hunt && !hint.ConsumeOnly && !hint.HuntOnly)
-            detail = "先点卡牌，再点目标牢房 · " + detail;
+        // 和电脑版一样只给收益最高的一步
+        string detail = best.Action.Kind is ActionKind.Consume or ActionKind.Hunt && !hint.ConsumeOnly && !hint.HuntOnly
+            ? "先点卡牌，再点目标牢房" : "收益最高的选择";
         string extra = $"预计本局：绮彩 ×{best.Chromatic:0.0} · 至臻 ×{best.Ultimate:0.0}";
         if (hint.State.MaxDays > 0) extra += $"\n按剩余 {hint.State.RemainingDays} 天计算";
         return new Shown(main, detail, extra, true, status);

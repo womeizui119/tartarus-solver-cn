@@ -25,6 +25,8 @@ internal static class DroidTest
                 p.Process(frame);
                 Console.WriteLine($"  {Path.GetFileName(f)} 第{i + 1}次 识别 {p.LastScanMs:0} 毫秒 → 大字「{last?.Main}」 {last?.Detail}");
             }
+            Thread.Sleep(4000);
+            Console.WriteLine($"  {Path.GetFileName(f)} 等 4 秒后 → 大字「{last?.Main}」 {last?.Detail} {last?.Extra}");
         }
 
         // 构造一个局面：第 5 天、要选目的地（3 号、7 号、审讯室），看推算和中文名

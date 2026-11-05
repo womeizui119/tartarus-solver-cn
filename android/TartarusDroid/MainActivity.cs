@@ -72,7 +72,11 @@ public class MainActivity : Activity
             return;
         }
         var mpm = (MediaProjectionManager)GetSystemService(MediaProjectionService)!;
-        StartActivityForResult(mpm.CreateScreenCaptureIntent(), CaptureRequest);
+        // 安卓 14 起录屏弹窗默认是“单个应用”：直接要“整个屏幕”，免得录成了别的应用
+        var intent = OperatingSystem.IsAndroidVersionAtLeast(34)
+            ? mpm.CreateScreenCaptureIntent(MediaProjectionConfig.CreateConfigForDefaultDisplay())
+            : mpm.CreateScreenCaptureIntent();
+        StartActivityForResult(intent, CaptureRequest);
     }
 
     protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
