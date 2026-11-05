@@ -8,7 +8,7 @@ namespace Tartarus.App;
 /// </summary>
 public static class Zh
 {
-    public const string AppName = "塔罗斯监狱求解器";
+    public const string AppName = "困兽玩法推理";
 
     private static readonly Dictionary<string, string> Instruments = new()
     {

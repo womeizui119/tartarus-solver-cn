@@ -10,11 +10,11 @@
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>TartarusSolver</AssemblyName>
-    <!-- 中文版：程序图标和文件属性里的中文名（exe 在发布包里改名为“塔罗斯监狱求解器.exe”） -->
+    <!-- 中文版：程序图标和文件属性里的中文名（exe 在发布包里改名为“困兽玩法推理.exe”） -->
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Product>塔罗斯监狱求解器</Product>
-    <AssemblyTitle>塔罗斯监狱求解器</AssemblyTitle>
-    <Company>塔罗斯监狱求解器中文版</Company>
+    <Product>困兽玩法推理</Product>
+    <AssemblyTitle>困兽玩法推理</AssemblyTitle>
+    <Company>困兽玩法推理</Company>
     <Copyright>原作者 Artem Gurevich（glcoder/TartarusSolver），MIT 协议</Copyright>
     <RootNamespace>Tartarus.App</RootNamespace>
     <NeutralLanguage>en</NeutralLanguage>

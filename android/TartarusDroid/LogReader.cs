@@ -108,7 +108,7 @@ public sealed class LogReader : IDisposable
                 asked = true;
                 cls.GetMethod("requestPermission", Java.Lang.Integer.Type)!.Invoke(null, Java.Lang.Integer.ValueOf(PermissionCode));
             }
-            why = "日志：请在 Shizuku 弹窗里允许“塔罗斯求解器”";
+            why = "日志：请在 Shizuku 弹窗里允许“困兽玩法推理”";
             return false;
         }
         why = "";

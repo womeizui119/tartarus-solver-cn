@@ -270,7 +270,7 @@
   <data name="Update_Installing" xml:space="preserve"><value>安裝中…</value></data>
   <data name="Update_OpenPage_Tip" xml:space="preserve"><value>開啟發布頁面</value></data>
   <data name="Update_To" xml:space="preserve"><value>更新至 {0}</value></data>
-  <data name="Cn_AppName" xml:space="preserve"><value>塔羅斯監獄求解器</value></data>
+  <data name="Cn_AppName" xml:space="preserve"><value>困獸玩法推理</value></data>
   <data name="Cn_Edition" xml:space="preserve"><value> · 中文版，基於原版 glcoder/TartarusSolver {0}（MIT 協議）</value></data>
   <data name="Cn_Recommend" xml:space="preserve"><value>當前推薦</value></data>
   <data name="Cn_None" xml:space="preserve"><value>暫無</value></data>

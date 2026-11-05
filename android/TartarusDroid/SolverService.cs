@@ -82,7 +82,7 @@ public sealed class SolverService : Service
         nm.CreateNotificationChannel(new NotificationChannel(Channel, "求解器运行中", NotificationImportance.Low));
         var open = PendingIntent.GetActivity(this, 0, new Intent(this, typeof(MainActivity)), PendingIntentFlags.Immutable);
         var n = new Notification.Builder(this, Channel)
-            .SetContentTitle("塔罗斯求解器正在看游戏画面")
+            .SetContentTitle("困兽玩法推理正在看游戏画面")
             .SetContentText("点浮窗上的 ■ 停止")
             .SetSmallIcon(Android.Resource.Drawable.IcMenuView)
             .SetContentIntent(open)

@@ -11,7 +11,7 @@
   <queries>
     <package android:name="moe.shizuku.privileged.api" />
   </queries>
-  <application android:label="塔罗斯求解器" android:supportsRtl="true" android:largeHeap="true">
+  <application android:label="困兽玩法推理" android:supportsRtl="true" android:largeHeap="true">
     <!-- Shizuku 通过它把授权交给本软件（读游戏日志用，可选） -->
     <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="com.zh.tartarussolver.shizuku"
               android:multiprocess="false" android:enabled="true" android:exported="true"

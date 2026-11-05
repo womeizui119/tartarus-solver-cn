@@ -95,7 +95,7 @@ public static class Updates
         string unpacked = Path.Combine(Staging, release.Version.ToString());
         await Task.Run(() => ZipFile.ExtractToDirectory(zip, unpacked), ct);
         File.Delete(zip);
-        // 压缩包里是一个程序文件夹（中文版叫“塔罗斯监狱求解器”，早先叫 TartarusSolver）。
+        // 压缩包里是一个程序文件夹（现在叫“困兽玩法推理”，早先叫“塔罗斯监狱求解器”、TartarusSolver）。
         string app = Directory.EnumerateDirectories(unpacked).FirstOrDefault(d => Exe(d) != null)
             ?? throw new InvalidDataException("no program folder in the zip");
         return app;
@@ -103,7 +103,7 @@ public static class Updates
 
     /// <summary>中文版：程序文件夹里的 exe，新名字优先（旧名字的 exe 也能用：它们启动的是同一个 TartarusSolver.dll）。</summary>
     public static string? Exe(string folder) =>
-        new[] { "塔罗斯监狱求解器.exe", "TartarusSolver.exe" }.Select(n => Path.Combine(folder, n)).FirstOrDefault(File.Exists);
+        new[] { "困兽玩法推理.exe", "塔罗斯监狱求解器.exe", "TartarusSolver.exe" }.Select(n => Path.Combine(folder, n)).FirstOrDefault(File.Exists);
 
     /// <summary>Starts the new version (in <paramref name="app"/>) to put itself in this install's place once this one exits.</summary>
     public static void StartInstall(string app, IEnumerable<string> args)

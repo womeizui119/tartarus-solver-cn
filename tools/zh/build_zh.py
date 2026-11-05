@@ -150,12 +150,15 @@ def package(version, zhver, bin_dir, out):
                     data = src.read(info)
                 dst.writestr(zh_name(rel), data, zipfile.ZIP_DEFLATED)
             dst.writestr(f"{FOLDER}/LICENSE.txt", license, zipfile.ZIP_DEFLATED)
+            dst.writestr(f"{FOLDER}/{COMPAT_EXE}", (bin_dir / "TartarusSolver.exe").read_bytes(), zipfile.ZIP_DEFLATED)
         check(official, target)
         made.append(target)
     return made
 
 
-FOLDER, EXE = "塔罗斯监狱求解器", "塔罗斯监狱求解器.exe"
+FOLDER, EXE = "困兽玩法推理", "困兽玩法推理.exe"
+# 1.0.0 及更早的自动更新只认“塔罗斯监狱求解器.exe / TartarusSolver.exe”：包里多放一个 TartarusSolver.exe（同一个启动器），让它们也能升上来
+COMPAT_EXE = "TartarusSolver.exe"
 
 
 def zh_name(rel):
@@ -171,12 +174,12 @@ def check(official, target):
     with zipfile.ZipFile(official) as a, zipfile.ZipFile(target) as b:
         na = {zh_name(i.filename.replace("\\", "/")) for i in a.infolist() if not i.is_dir()}
         nb = {i.filename.replace("\\", "/") for i in b.infolist() if not i.is_dir()}
-        na |= {f"{FOLDER}/LICENSE.txt"}
+        na |= {f"{FOLDER}/LICENSE.txt", f"{FOLDER}/{COMPAT_EXE}"}
         if na != nb:
             sys.exit(f"{target.name}：文件清单和官方包不一致：{na ^ nb}")
         dll = b.read(f"{FOLDER}/TartarusSolver.dll")
         res = b.read(f"{FOLDER}/zh-Hans/TartarusSolver.resources.dll")
-        if "塔罗斯监狱求解器".encode("utf-16-le") not in b.read(f"{FOLDER}/{EXE}"):
+        if "困兽玩法推理".encode("utf-16-le") not in b.read(f"{FOLDER}/{EXE}"):
             sys.exit(f"{target.name}：exe 里没有中文名和图标")
         missing = [m for m in MARKERS if m.encode("utf-8") not in res and m.encode("utf-16-le") not in res]
         if missing:
@@ -190,11 +193,11 @@ def check(official, target):
 
 
 def publish(zhver, version, files):
-    notes = (f"塔罗斯监狱求解器中文版 {zhver}，基于 glcoder/TartarusSolver v{version}（MIT 协议）修改。\n\n"
+    notes = (f"困兽玩法推理 {zhver}，基于 glcoder/TartarusSolver v{version}（MIT 协议）修改。\n\n"
              f"- 一般电脑下载 TartarusSolver-{zhver}-zh-full.zip（自带运行库，解压即用）\n"
              f"- 已装 .NET 9 桌面运行时的下载 TartarusSolver-{zhver}-zh.zip（体积小）\n\n"
              "已安装的中文版会自动提示更新。原作者：https://github.com/glcoder/TartarusSolver")
-    run("gh", "release", "create", f"v{zhver}", "-R", REPO, "--title", f"中文版 {zhver}", "--notes", notes,
+    run("gh", "release", "create", f"v{zhver}", "-R", REPO, "--title", f"困兽玩法推理 {zhver}", "--notes", notes,
         "--target", run("git", "rev-parse", "HEAD").stdout.strip(), *map(str, files))
     print("已发布：", f"https://github.com/{REPO}/releases/tag/v{zhver}")
 

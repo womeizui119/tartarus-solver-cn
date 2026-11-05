@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- 塔罗斯监狱求解器 安卓浮窗版：录屏看游戏画面，浮窗写出这一步怎么走。识别和推算与电脑版同一套代码。 -->
+  <!-- 困兽玩法推理 安卓浮窗版：录屏看游戏画面，浮窗写出这一步怎么走。识别和推算与电脑版同一套代码。 -->
   <PropertyGroup>
     <TargetFramework>net9.0-android</TargetFramework>
     <SupportedOSPlatformVersion>29</SupportedOSPlatformVersion>
@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationId>com.zh.tartarussolver</ApplicationId>
-    <ApplicationTitle>塔罗斯求解器</ApplicationTitle>
-    <ApplicationVersion>9</ApplicationVersion>
-    <ApplicationDisplayVersion>0.9</ApplicationDisplayVersion>
+    <ApplicationTitle>困兽玩法推理</ApplicationTitle>
+    <ApplicationVersion>10</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
     <TartarusAndroid>true</TartarusAndroid>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
