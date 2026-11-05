@@ -108,7 +108,7 @@ public sealed class Overlay
             _main.SetTextSize(Android.Util.ComplexUnitType.Sp, 14);
         }
         // 小字只在必须时出现：吃/寻猎要点两下、出错、黑屏这类
-        string sub = s.HasHint ? (s.Detail.StartsWith("先点") ? s.Detail : "") : (s.Main is "暂无" or "计算中…" or "准备中…" ? "" : s.Detail);
+        string sub = s.HasHint ? (s.Detail.StartsWith("先点") ? s.Detail : "") : (s.Main is "暂无" or "计算中…" or "准备中…" or "识别中…" ? "" : s.Detail);
         _sub.Text = sub;
         _sub.Visibility = sub.Length > 0 ? ViewStates.Visible : ViewStates.Gone;
     }

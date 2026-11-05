@@ -26,7 +26,7 @@ public class MainActivity : Activity
         root.SetBackgroundColor(Color.Rgb(30, 31, 36));
 
         root.AddView(Label("困兽玩法推理", 24, Color.Rgb(232, 232, 236), bold: true));
-        root.AddView(Label("安卓浮窗版 1.3（测试版）", 13, Color.Rgb(154, 160, 172)));
+        root.AddView(Label("安卓浮窗版 1.4（测试版）", 13, Color.Rgb(154, 160, 172)));
         root.AddView(Label("\n在游戏上面开一个小窗，写出塔罗斯监狱这一步怎么走。只看画面，不碰游戏操作。\n", 15, Color.Rgb(200, 204, 212)));
 
         root.AddView(Label("第 1 步：允许显示在其他应用上层", 16, Color.Rgb(232, 232, 236), bold: true));

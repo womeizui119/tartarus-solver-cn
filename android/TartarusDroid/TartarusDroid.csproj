@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationId>com.zh.tartarussolver</ApplicationId>
     <ApplicationTitle>困兽玩法推理</ApplicationTitle>
-    <ApplicationVersion>13</ApplicationVersion>
-    <ApplicationDisplayVersion>1.3</ApplicationDisplayVersion>
+    <ApplicationVersion>14</ApplicationVersion>
+    <ApplicationDisplayVersion>1.4</ApplicationDisplayVersion>
     <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
     <TartarusAndroid>true</TartarusAndroid>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

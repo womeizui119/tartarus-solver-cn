@@ -135,6 +135,7 @@ public sealed class SolverService : Service
             ModelSetup.Prepare(this);
             Post(new Shown("准备中…", "正在加载识别和推算模型…", null, false, "准备中…"));
             _pipeline = new Pipeline(() => _logReader?.Live);
+            _pipeline.Trace += s => Saver.Log(this, s);
             _pipeline.Changed += Post;
             Post(new Shown("暂无", "进入塔罗斯监狱后，这里会写出该怎么走", null, false, "就绪"));
         }

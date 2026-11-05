@@ -19,7 +19,7 @@ public sealed class Pipeline : IDisposable
     private readonly HintService _hints;
     private readonly object _gate = new();
 
-    private string? _lastKey, _requestedKey;
+    private string? _lastKey, _requestedKey, _kind;
     private EditableSandbox? _sticky;
     private EditableSandbox? _lastBoard;
     private ScreenText? _lastText, _textBeforeRed;
@@ -46,7 +46,18 @@ public sealed class Pipeline : IDisposable
             lock (_gate) _hint = h;
             Publish();
         };
+        _hints.Log += s => Trace?.Invoke("推算：" + s);
+        _hints.Failed += ex =>
+        {
+            Trace?.Invoke("推算出错：" + ex);
+            lock (_gate) _hint = null;
+            _requestedKey = null;
+            SetStatus("推算出错：" + ex.GetType().Name + " " + ex.Message);
+        };
     }
+
+    /// <summary>排查用的一行行记录（写进 记录-….txt）。</summary>
+    public event Action<string>? Trace;
 
     public ScanResult? LastScan { get; private set; }
     public double LastScanMs { get; private set; }
@@ -59,11 +70,22 @@ public sealed class Pipeline : IDisposable
         LastScan = r;
         try
         {
+            // 画面种类一变（选刑具 ↔ 棋盘 ↔ 没棋盘），上一种画面的推荐和稳定性记录立刻作废
+            // （2026-11-05 实机：选完刑具进棋盘后，“重新随机”挂了整整一局）
+            string kind = r.Ok ? "board" : r.Pick != null ? "pick" : "none";
+            if (kind != _kind)
+            {
+                _kind = kind;
+                _recent.Clear();
+                _changedReads = 0;
+                if (_requestedKey != null) Clear("识别中…");
+                if (kind != "board") _sticky = null;
+            }
             if (r.Ok) Board(r);
             else if (r.Pick is { } pick) Pick(pick, r);
             else
             {
-                _lastKey = null; _recent.Clear();
+                _lastKey = null;
                 Clear($"没看到塔罗斯监狱棋盘（{Zh.Reason(r.Reason)}）");
             }
         }
@@ -201,7 +223,7 @@ public sealed class Pipeline : IDisposable
     private static Shown Describe(Hint? hint, string status)
     {
         if (hint is not { Ranked: { Count: > 0 } ranked })
-            return new Shown(status.StartsWith("计算") ? "计算中…" : status.StartsWith("识别") ? "识别中…" : "暂无", status, null, false, status);
+            return new Shown(status.StartsWith("计算") ? "计算中…" : status.StartsWith("识别") ? "识别中…" : status.StartsWith("推算出错") ? "推算出错" : "暂无", status, null, false, status);
         var best = ranked[0];
         string main = Names.Ranked(hint, best);
         // 和电脑版一样只给收益最高的一步

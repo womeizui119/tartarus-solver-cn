@@ -110,6 +110,8 @@ public sealed class HintService : IDisposable
 
     /// <summary>Raised on a thread-pool thread with the final ranking of a position.</summary>
     public event Action<Hint>? Ready;
+    /// <summary>中文版：推算本身出错了（内存不够、模型异常等）。不报出来的话，浮窗会一直挂着上一步的推荐。</summary>
+    public event Action<Exception>? Failed;
 
     /// <summary>
     /// Starts searching the position the screen shows, unless it's the one being searched. True when a new search
@@ -180,6 +182,13 @@ public sealed class HintService : IDisposable
             }
             catch (OperationCanceledException)
             {
+            }
+            catch (Exception ex)
+            {
+                Log?.Invoke("search failed: " + ex);
+                lock (_gate) if (cts.IsCancellationRequested) return;
+                _key = null;  // 下一帧同样的局面会重新算，而不是当成“已经在算”
+                Failed?.Invoke(ex);
             }
         });
         return true;
