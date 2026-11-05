@@ -16,7 +16,7 @@ public sealed class Overlay
     private readonly Context _ctx;
     private readonly IWindowManager _wm;
     private readonly LinearLayout _root, _menu;
-    private readonly TextView _main, _sub, _autoBtn;
+    private readonly TextView _main, _sub, _autoBtn, _mode;
     private readonly WindowManagerLayoutParams _lp;
     private bool _shown, _auto;
 
@@ -58,6 +58,10 @@ public sealed class Overlay
         _menu.AddView(_autoBtn);
         _menu.AddView(Button("停止", () => StopClicked?.Invoke()));
         _root.AddView(_menu);
+        // 菜单展开时下面一行小字：日志读取状态（读到日志更准更快）
+        _mode = Outlined("", 11, Color.Rgb(200, 204, 212));
+        _mode.Visibility = ViewStates.Gone;
+        _root.AddView(_mode);
 
         _lp = new WindowManagerLayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent,
@@ -113,8 +117,19 @@ public sealed class Overlay
 
     public void Toast(string text) => Android.Widget.Toast.MakeText(_ctx, text, ToastLength.Short)!.Show();
 
-    private void ToggleMenu() =>
-        _menu.Visibility = _menu.Visibility == ViewStates.Visible ? ViewStates.Gone : ViewStates.Visible;
+    private void ToggleMenu()
+    {
+        bool open = _menu.Visibility != ViewStates.Visible;
+        _menu.Visibility = open ? ViewStates.Visible : ViewStates.Gone;
+        _mode.Visibility = open ? ViewStates.Visible : ViewStates.Gone;
+    }
+
+    /// <summary>日志状态，如“日志：已连接”。</summary>
+    public void SetMode(string state)
+    {
+        _mode.Text = state;
+        _mode.SetTextColor(state == "日志：已连接" ? Color.Rgb(91, 227, 143) : Color.Rgb(200, 204, 212));
+    }
 
     private void Draggable(View handle)
     {

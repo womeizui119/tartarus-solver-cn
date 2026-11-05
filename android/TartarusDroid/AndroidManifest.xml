@@ -7,5 +7,14 @@
   <!-- 不联网：去掉编译工具默认加的网络权限 -->
   <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
-  <application android:label="塔罗斯求解器" android:supportsRtl="true" android:largeHeap="true"></application>
+  <!-- 能看到 Shizuku 是否安装（安卓 11 起要声明） -->
+  <queries>
+    <package android:name="moe.shizuku.privileged.api" />
+  </queries>
+  <application android:label="塔罗斯求解器" android:supportsRtl="true" android:largeHeap="true">
+    <!-- Shizuku 通过它把授权交给本软件（读游戏日志用，可选） -->
+    <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="com.zh.tartarussolver.shizuku"
+              android:multiprocess="false" android:enabled="true" android:exported="true"
+              android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+  </application>
 </manifest>

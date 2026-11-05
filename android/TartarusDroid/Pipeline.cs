@@ -29,8 +29,12 @@ public sealed class Pipeline : IDisposable
 
     public event Action<Shown>? Changed;
 
-    public Pipeline()
+    private readonly Func<LoggedRun?>? _live;
+
+    /// <param name="live">游戏日志里的当前这一局（读到日志时）：天数、今天吃过没有以它为准。</param>
+    public Pipeline(Func<LoggedRun?>? live = null)
     {
+        _live = live;
         var cells = new CnnCellReader(panels: new SlotReader());
         var presence = SandboxPresence.FindTemplate() is { } t ? SandboxPresence.Load(t) : null;
         _scanner = new LayoutScanner(new OcrEngine(threads: 2, gameLanguage: "zh"), cells, presence);
@@ -71,6 +75,8 @@ public sealed class Pipeline : IDisposable
     private void Board(ScanResult r)
     {
         var board = EditableSandbox.FromScan(r);
+        var live = _live?.Invoke();
+        if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
 
@@ -115,7 +121,7 @@ public sealed class Pipeline : IDisposable
         var hb = huntPick ? _huntOffer!.Value.Board.Clone() : board;
         var text = consumeOnly ? _textBeforeRed ?? r.Text : huntPick ? _huntOffer!.Value.Text : r.Text;
         var observation = GameObservation.From(hb, text, 0);
-        observation.ConsumedToday = _consumedDay != null && _consumedDay == hb.Days;
+        observation.ConsumedToday = live != null ? live.ConsumedToday : _consumedDay != null && _consumedDay == hb.Days;
         observation.ChainGoesOn = observation.ConsumedToday == true && consumeOnly;
         if (_hints.Request(observation, consumeOnly, huntPick)) lock (_gate) _hint = null;
         SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
