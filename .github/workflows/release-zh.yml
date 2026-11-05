@@ -1,0 +1,31 @@
+# 中文版发布：推 v0.7.44.1 这样的四段版本标签时，自动编译、替换进原版发布包、发布到本仓库 Release。
+name: 发布中文版
+on:
+  push:
+    tags: ['v*.*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的标签，如 v0.7.44.1'
+        required: true
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: 编译、打包、发布
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          ZH="${TAG#v}"
+          UP="${ZH%.*}"
+          python3 tools/zh/build_zh.py "$UP" --no-port --publish
