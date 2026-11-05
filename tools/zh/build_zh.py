@@ -48,7 +48,7 @@ def zh_commits(base_tag):
 
 def current_base():
     """当前分支所基于的原版 tag（离 HEAD 最近的 vX.Y.Z）。"""
-    return run("git", "describe", "--tags", "--abbrev=0", "--match", "v*").stdout.strip()
+    return run("git", "describe", "--tags", "--abbrev=0", "--match", "v*", "--exclude", "v*.*.*.*").stdout.strip()
 
 
 def port(version):
