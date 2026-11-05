@@ -1,16 +1,21 @@
 """中文版一键出包：把汉化改动搬到原版的某个版本上，编译，替换进官方发布包，打出中文版 zip。
 
-用法（在仓库根目录，需要 git、.NET 9 SDK、Python 3）：
-    python tools/zh/build_zh.py 0.7.40            # 跟进原版 v0.7.40
-    python tools/zh/build_zh.py 0.7.40 --out dist  # 输出目录（默认 dist-zh）
+用法（在仓库根目录，需要 git、.NET 9 SDK、Python 3；发布还需要 gh 命令行）：
+    python tools/zh/build_zh.py 0.7.45             # 跟进原版 v0.7.45，出 0.7.45.1 中文版
+    python tools/zh/build_zh.py 0.7.44 --no-port   # 不搬提交，直接用当前源码出包
+    python tools/zh/build_zh.py 0.7.44 --no-port --publish   # 出包后发布到本仓库的 GitHub Release
+
+中文版版本号 = 原版版本号 + 第四段修订号（0.7.44.1、0.7.44.2…），软件内的自动更新按它判断新旧。
+发布包名 TartarusSolver-<中文版版本>-zh.zip / -zh-full.zip，软件更新时按这个名字找。
 
 步骤：
 1. 取原版 tag v<版本>，在其上新建分支 zh-<版本>，把中文版提交（当前分支上、原版 tag 之后的提交）逐个搬过去。
    有冲突时停下来，说明哪些文件冲突，改好后 `git cherry-pick --continue` 再重跑本脚本加 --no-port。
 2. 编译 src/Tartarus.App（Release，win-x64；非 Windows 上自动加 EnableWindowsTargeting）。
-3. 下载官方 TartarusSolver-<版本>.zip 和 -full.zip，把 TartarusSolver.dll 和 Tartarus.*.dll 换成新编译的，
-   README.txt 换成中文说明，打成 TartarusSolver-<版本>-zh.zip / -zh-full.zip。
-4. 核对：文件清单与官方包一致，只有换掉的文件不同；dll 中确实带着中文界面文字，且不含原作者的错误上报地址。
+3. 下载官方 TartarusSolver-<版本>.zip 和 -full.zip，把 TartarusSolver.dll、Tartarus.*.dll 和各语言的
+   TartarusSolver.resources.dll 换成新编译的，README.txt 换成中文说明，加上 LICENSE（MIT，保留原作者版权）。
+4. 核对：文件清单与官方包一致（只多了 LICENSE）；带着中文界面文字，且不含原作者的错误上报地址。
+5. 加 --publish 时，在本仓库建 tag v<中文版版本> 的 Release 并上传两个包。
 """
 import argparse, os, platform, re, shutil, subprocess, sys, urllib.request, zipfile
 from pathlib import Path
@@ -21,7 +26,8 @@ RUNTIME_NEEDED = ("\n需要先安装 .NET 9 桌面运行时 (x64)：https://dotn
                   "和 Microsoft Visual C++ 运行库 (x64)：https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
                   "（不想装的话，请下载 -full 完整版，里面已自带。）\n")
 RUNTIME_BUNDLED = "\n完整版已自带 .NET 和 VC++ 运行库，无需额外安装。\n"
-MARKERS = ["审讯室", "未在捕获", "保存问题报告"]
+MARKERS = ["当前推荐", "窗口透明度"]  # zh-Hans 资源包里应有的中文版文字
+REPO = "womeizui119/tartarus-solver-cn"
 
 
 def run(*cmd, cwd=ROOT, check=True):
@@ -65,6 +71,16 @@ def port(version):
             sys.exit("搬汉化改动时有冲突（原版改了同一处代码）：\n  " + "\n  ".join(conflicts)
                      + "\n改好后执行 git add 这些文件、git cherry-pick --continue，再加 --no-port 重跑本脚本。")
     print(f"已在 {tag} 上建好分支 {branch}，搬了 {len(commits)} 个汉化提交。")
+    set_version(f"{version}.1")
+
+
+def set_version(v):
+    props = ROOT / "Directory.Build.props"
+    text = props.read_bytes().decode("utf-8")
+    new = re.sub(r"<Version>[^<]+</Version>", f"<Version>{v}</Version>", text, count=1)
+    if new != text:
+        props.write_bytes(new.encode("utf-8"))
+        run("git", "-c", "user.name=zh", "-c", "user.email=zh@local", "commit", "-qam", f"中文版 {v}")
 
 
 def build():
@@ -91,41 +107,47 @@ def download(version, name, dest):
     return dest
 
 
-def package(version, bin_dir, out):
+def package(version, zhver, bin_dir, out):
     out.mkdir(parents=True, exist_ok=True)
     template = (ROOT / "tools/zh/README-zh.txt").read_text(encoding="utf-8")
-    replace = ["TartarusSolver.dll"] + [p.name for p in bin_dir.glob("Tartarus.*.dll")]
+    replace = {"TartarusSolver.dll"} | {p.name for p in bin_dir.glob("Tartarus.*.dll")}
+    license = (ROOT / "LICENSE").read_bytes()
     made = []
     for suffix, note in [("", RUNTIME_NEEDED), ("-full", RUNTIME_BUNDLED)]:
         official = download(version, f"TartarusSolver-{version}{suffix}.zip", out / f"TartarusSolver-{version}{suffix}.zip")
-        target = out / f"TartarusSolver-{version}-zh{suffix}.zip"
-        readme = template.replace("{version}", version).replace("{runtime}", note).replace("\n", "\r\n")
+        target = out / f"TartarusSolver-{zhver}-zh{suffix}.zip"
+        readme = template.replace("{version}", zhver).replace("{upstream}", version).replace("{runtime}", note).replace("\n", "\r\n")
         with zipfile.ZipFile(official) as src, zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as dst:
             for info in src.infolist():
                 if info.is_dir():
                     continue
                 rel = info.filename.replace("\\", "/")
                 name = rel.rsplit("/", 1)[-1]
-                if rel.count("/") == 1 and name in replace:  # 程序文件夹根下的那几个 dll
+                parts = rel.split("/")
+                if len(parts) == 2 and name in replace:  # 程序文件夹根下的那几个 dll
                     data = (bin_dir / name).read_bytes()
+                elif len(parts) == 3 and name == "TartarusSolver.resources.dll":  # 各语言界面文字
+                    data = (bin_dir / parts[1] / name).read_bytes()
                 elif rel == "TartarusSolver/README.txt":
                     data = b"\xef\xbb\xbf" + readme.encode("utf-8")
                 else:
                     data = src.read(info)
                 dst.writestr(rel, data, zipfile.ZIP_DEFLATED)
-        check(official, target, replace)
+            dst.writestr("TartarusSolver/LICENSE.txt", license, zipfile.ZIP_DEFLATED)
+        check(official, target)
         made.append(target)
     return made
 
 
-def check(official, target, replaced):
+def check(official, target):
     with zipfile.ZipFile(official) as a, zipfile.ZipFile(target) as b:
         na = {i.filename.replace("\\", "/") for i in a.infolist() if not i.is_dir()}
         nb = {i.filename.replace("\\", "/") for i in b.infolist() if not i.is_dir()}
-        if na != nb:
-            sys.exit(f"{target.name}：文件清单和官方包不一致：{na ^ nb}")
+        if na | {"TartarusSolver/LICENSE.txt"} != nb:
+            sys.exit(f"{target.name}：文件清单和官方包不一致：{(na | {'TartarusSolver/LICENSE.txt'}) ^ nb}")
         dll = b.read("TartarusSolver/TartarusSolver.dll")
-        missing = [m for m in MARKERS if m.encode("utf-16-le") not in dll]
+        res = b.read("TartarusSolver/zh-Hans/TartarusSolver.resources.dll")
+        missing = [m for m in MARKERS if m.encode("utf-8") not in res and m.encode("utf-16-le") not in res]
         if missing:
             sys.exit(f"{target.name}：主程序里没有中文界面文字 {missing}")
         if b".sentry.io" in dll:
@@ -135,20 +157,34 @@ def check(official, target, replaced):
     print(f"核对通过：{target.name}（{target.stat().st_size / 1048576:.1f} MB）")
 
 
+def publish(zhver, version, files):
+    notes = (f"塔罗斯监狱求解器中文版 {zhver}，基于 glcoder/TartarusSolver v{version}（MIT 协议）修改。\n\n"
+             f"- 一般电脑下载 TartarusSolver-{zhver}-zh-full.zip（自带运行库，解压即用）\n"
+             f"- 已装 .NET 9 桌面运行时的下载 TartarusSolver-{zhver}-zh.zip（体积小）\n\n"
+             "已安装的中文版会自动提示更新。原作者：https://github.com/glcoder/TartarusSolver")
+    run("gh", "release", "create", f"v{zhver}", "-R", REPO, "--title", f"中文版 {zhver}", "--notes", notes,
+        "--target", run("git", "rev-parse", "HEAD").stdout.strip(), *map(str, files))
+    print("已发布：", f"https://github.com/{REPO}/releases/tag/v{zhver}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("version", help="原版版本号，如 0.7.40")
     ap.add_argument("--out", type=Path, default=ROOT / "dist-zh")
     ap.add_argument("--no-port", action="store_true", help="不搬提交（已手动解决冲突时）")
+    ap.add_argument("--publish", action="store_true", help="出包后发布到 GitHub Release")
     a = ap.parse_args()
     if not a.no_port:
         port(a.version)
     props = (ROOT / "Directory.Build.props").read_text(encoding="utf-8")
     built = re.search(r"<Version>([^<]+)</Version>", props).group(1)
-    if built != a.version:
-        sys.exit(f"源码版本是 {built}，不是 {a.version}：先切到对应分支。")
-    for z in package(a.version, build(), a.out):
+    if not built.startswith(a.version + "."):
+        sys.exit(f"源码版本是 {built}，不是 {a.version}.x：先切到对应分支。")
+    made = package(a.version, built, build(), a.out)
+    for z in made:
         print("出包：", z)
+    if a.publish:
+        publish(built, a.version, made)
 
 
 if __name__ == "__main__":
