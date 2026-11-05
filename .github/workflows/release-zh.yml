@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '要发布的标签，如 v0.7.44.1'
+        description: "要发布的版本标签，如 v0.7.44.1（在所选分支的最新提交上建）"
         required: true
 permissions:
   contents: write
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ github.ref }}
           fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
