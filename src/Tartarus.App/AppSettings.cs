@@ -12,7 +12,8 @@ public sealed class AppSettings
     public string DatasetDir { get; set; } = DefaultDatasetDir();
     public bool AutoScan { get; set; } = true;
     /// <summary>From one frame to the next, 0 .. 1 s; 0: the next as soon as the last one's reading and hint are done.</summary>
-    public double AutoScanSeconds { get; set; } = 0.5;
+    // 中文版：0.1 秒（原版 0.5）。识别一帧只要约 0.05 秒，看得勤一些，绿框和推荐就跟得上画面。
+    public double AutoScanSeconds { get; set; } = 0.1;
     /// <summary>
     /// Started with --debug: everything in the window. Without it the player's settings only (window, scanning, the
     /// game's log, bug reports): the overlay shows the hints alone and nothing goes to the dataset.
@@ -70,7 +71,7 @@ public sealed class AppSettings
     };
     /// <summary>The defaults this file was last brought up to (see <see cref="Upgrade"/>); 0 in files older than it.</summary>
     public int SettingsVersion { get; set; }
-    private const int CurrentVersion = 3;
+    private const int CurrentVersion = 4;
     /// <summary>Where bug reports go (a Sentry DSN); empty: the app's own (BugReports.DefaultDsn).</summary>
     public string? ReportDsn { get; set; }
     /// <summary>A copy of the screen instead of window capture from the start; only in this file, the app turns to it by itself where it must.</summary>
@@ -129,6 +130,7 @@ public sealed class AppSettings
         if (SettingsVersion < 3) DetectGameLanguage = string.IsNullOrEmpty(GameLanguage);
         // 中文版：原版的默认窗口标题换成也认中文标题的；还没选过游戏语言的设为简体中文。
         if (WindowTitle == @"^Torchlight: Infinite\s*$") WindowTitle = defaults.WindowTitle;
+        if (SettingsVersion < 4 && AutoScanSeconds == 0.5) AutoScanSeconds = defaults.AutoScanSeconds;
         if (string.IsNullOrEmpty(GameLanguage)) (GameLanguage, DetectGameLanguage) = ("zh", false);
         foreach (var (action, gesture) in defaults.Hotkeys) Hotkeys.TryAdd(action, gesture);
         SettingsVersion = CurrentVersion;

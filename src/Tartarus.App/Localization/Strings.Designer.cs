@@ -287,9 +287,6 @@ public static class Strings
     public static string Cn_EyeDetail => Get(nameof(Cn_EyeDetail));
     public static string Cn_Computing => Get(nameof(Cn_Computing));
     public static string Cn_ComputingDetail => Get(nameof(Cn_ComputingDetail));
-    public static string Cn_Tied => Get(nameof(Cn_Tied));
-    public static string Cn_Next => Get(nameof(Cn_Next));
-    public static string Cn_Only => Get(nameof(Cn_Only));
     public static string Cn_TwoClicks => Get(nameof(Cn_TwoClicks));
     public static string Cn_Chests => Get(nameof(Cn_Chests));
     public static string Cn_Days => Get(nameof(Cn_Days));

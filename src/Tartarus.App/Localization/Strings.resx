@@ -282,10 +282,7 @@ Unpack the whole archive into a folder of its own and run the program from there
   <data name="Cn_EyeDetail" xml:space="preserve"><value>Look at the Sandbox once (or go back to the pick): the move shows once it is read.</value></data>
   <data name="Cn_Computing" xml:space="preserve"><value>Computing…</value></data>
   <data name="Cn_ComputingDetail" xml:space="preserve"><value>Every move is being played out.</value></data>
-  <data name="Cn_Tied" xml:space="preserve"><value>As good: {0}</value></data>
-  <data name="Cn_Next" xml:space="preserve"><value>Next best: {0}</value></data>
-  <data name="Cn_Only" xml:space="preserve"><value>The only choice</value></data>
-  <data name="Cn_TwoClicks" xml:space="preserve"><value>Click the card, then the dashed cell · {0}</value></data>
+  <data name="Cn_TwoClicks" xml:space="preserve"><value>Click the card, then the dashed cell</value></data>
   <data name="Cn_Chests" xml:space="preserve"><value>At the Riot: Chromatic ×{0} · Ultimate ×{1}</value></data>
   <data name="Cn_Days" xml:space="preserve"><value>Counted with {0} days left (of {1})</value></data>
   <data name="Cn_NoLog" xml:space="preserve"><value> · no game log found: the days are read from the screen only and may be off</value></data>

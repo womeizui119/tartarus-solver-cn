@@ -282,10 +282,7 @@
   <data name="Cn_EyeDetail" xml:space="preserve"><value>先看一眼棋盘（或回到选择界面），读完后给出推荐。</value></data>
   <data name="Cn_Computing" xml:space="preserve"><value>计算中…</value></data>
   <data name="Cn_ComputingDetail" xml:space="preserve"><value>正在推演每一步的结果。</value></data>
-  <data name="Cn_Tied" xml:space="preserve"><value>同样好：{0}</value></data>
-  <data name="Cn_Next" xml:space="preserve"><value>次选：{0}</value></data>
-  <data name="Cn_Only" xml:space="preserve"><value>只有这一个选择</value></data>
-  <data name="Cn_TwoClicks" xml:space="preserve"><value>先点卡牌，再点虚线框的牢房 · {0}</value></data>
+  <data name="Cn_TwoClicks" xml:space="preserve"><value>先点卡牌，再点虚线框的牢房</value></data>
   <data name="Cn_Chests" xml:space="preserve"><value>预计本局结束：绮彩 ×{0} · 至臻 ×{1}</value></data>
   <data name="Cn_Days" xml:space="preserve"><value>按剩余 {0} 天计算（本局共 {1} 天）</value></data>
   <data name="Cn_NoLog" xml:space="preserve"><value> · 未找到游戏日志，天数只靠画面识别，可能不准</value></data>

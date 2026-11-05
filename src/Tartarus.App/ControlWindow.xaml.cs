@@ -1685,12 +1685,9 @@ public partial class ControlWindow : Window
         {
             var best = ranked[0];
             main = SandboxOverlayView.RankedNameLoc(hint, best);
-            var ties = ranked.Skip(1).Where(a => best.Mean - a.Mean < Hint.TieWithin).ToList();
-            var next = ranked.Skip(1 + ties.Count).FirstOrDefault();
-            detail = ties.Count > 0 ? Loc.F(Strings.Cn_Tied, string.Join(" / ", ties.Select(t => SandboxOverlayView.RankedNameLoc(hint, t))))
-                : next != null ? Loc.F(Strings.Cn_Next, SandboxOverlayView.RankedNameLoc(hint, next)) : Strings.Cn_Only;
-            if (best.Action.Kind is Tartarus.Rules.ActionKind.Consume or Tartarus.Rules.ActionKind.Hunt && !hint.ConsumeOnly && !hint.HuntOnly)
-                detail = Loc.F(Strings.Cn_TwoClicks, detail);
+            // 只写收益最高的这一步，不列并列和次选。要点两下的（吃、寻猎）提醒一句。
+            detail = best.Action.Kind is Tartarus.Rules.ActionKind.Consume or Tartarus.Rules.ActionKind.Hunt && !hint.ConsumeOnly && !hint.HuntOnly
+                ? Strings.Cn_TwoClicks : "";
             chests = Loc.F(Strings.Cn_Chests, best.Chromatic.ToString("0.0", CultureInfo.InvariantCulture), best.Ultimate.ToString("0.0", CultureInfo.InvariantCulture));
             // 写出这次按剩余几天算的，方便和游戏里的天数对照；没有游戏日志时天数只靠画面识别。
             var state = hint.State;
@@ -1705,11 +1702,12 @@ public partial class ControlWindow : Window
         RecommendText.Text = main;
         RecommendText.Foreground = hint != null ? RecommendOn : RecommendOff;
         RecommendDetail.Text = detail;
+        RecommendDetail.Visibility = detail.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         RecommendChests.Text = chests ?? "";
         RecommendChests.Visibility = chests != null ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private static readonly System.Windows.Media.Brush RecommendOn = MakeBrush(0x5B, 0xE3, 0x8F), RecommendOff = MakeBrush(0x9A, 0xA0, 0xAC);
+    private static readonly System.Windows.Media.Brush RecommendOn = MakeBrush(0xFF, 0x4D, 0x4D), RecommendOff = MakeBrush(0x9A, 0xA0, 0xAC);
     private static readonly System.Windows.Media.Brush DotOn = MakeBrush(0x4C, 0xC3, 0x8A), DotWait = MakeBrush(0xE6, 0xB4, 0x6E), DotOff = MakeBrush(0x6F, 0x75, 0x80);
 
     private static System.Windows.Media.Brush MakeBrush(byte r, byte g, byte b)

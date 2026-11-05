@@ -64,6 +64,9 @@ public sealed partial class SandboxOverlayView : FrameworkElement
     /// <summary>中文版：浮层文字的缩放（设置里的 OverlayFontScale）。</summary>
     public static double FontScale { get; set; } = 1.0;
 
+    /// <summary>中文版：画面上方那行推荐的红字。</summary>
+    private static readonly Brush BannerBrush = Freeze(new SolidColorBrush(Color.FromRgb(255, 77, 77)));
+
     private static readonly Typeface Face = new(Loc.Font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
 
     private static readonly Brush[] RarityBrushes =
@@ -172,6 +175,9 @@ public sealed partial class SandboxOverlayView : FrameworkElement
             if (m.Hint is { } pickHint) DrawPickHint(dc, pickLayout, pick, pickHint, sx, sy, ppd);
         }
         if (m.HintLine && m.Hint is { } summary && (m.Scan?.Ok == true || m.Scan?.Pick != null)) DrawHintSummary(dc, summary, ppd);
+        // 中文版：画面上方正中一行红色大字写这一步（绿框慢半拍时看这里就知道点哪）。
+        if (!m.EditMode && m.Hint is { Ranked: { Count: > 0 } bannerRanked } bannerHint && (m.Scan?.Ok == true || m.Scan?.Pick != null))
+            Pill(dc, RankedNameLoc(bannerHint, bannerRanked[0]), new Point(m.FrameWidth * sx / 2, m.FrameHeight * sy * 0.1), BannerBrush, 28, ppd, centerX: true);
         // The run theme's scroll: say what was read, under the theme's name.
         if (!m.HintsOnly && m.Scan is { Theme: { } runTheme, Layout: { } themeLayout })
         {
