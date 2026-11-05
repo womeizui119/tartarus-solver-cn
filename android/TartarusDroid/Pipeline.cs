@@ -62,7 +62,7 @@ public sealed class Pipeline : IDisposable
             else if (r.Pick is { } pick) Pick(pick, r);
             else
             {
-                _lastKey = null;
+                _lastKey = null; _recent.Clear();
                 Clear($"没看到塔罗斯监狱棋盘（{Zh.Reason(r.Reason)}）");
             }
         }
@@ -80,14 +80,9 @@ public sealed class Pipeline : IDisposable
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
 
-        // 同一个局面连续两次才算数
+        // 同一个局面读到两次才算数（最近 4 次里有 2 次即可，不必连着：卡牌发光动画会让个别几次读得不一样）
         string key = SandboxText.Describe(board) + "|" + string.Join(",", r.Text?.Cards.Select(c => c.Meaning) ?? []) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
-        if (key != _lastKey)
-        {
-            _lastKey = key;
-            SetStatus($"识别中… {LastScanMs:0} 毫秒");
-            return;
-        }
+        if (!Stable(key)) return;
         _lastBoard = board.Clone();
         _lastText = r.Text;
 
@@ -130,12 +125,7 @@ public sealed class Pipeline : IDisposable
     private void Pick(PickRead pick, ScanResult r)
     {
         string key = "pick|" + pick.Kind + "|" + string.Join(",", pick.Cards.Select(c => c.Id ?? c.Text));
-        if (key != _lastKey)
-        {
-            _lastKey = key;
-            SetStatus($"识别中… {LastScanMs:0} 毫秒");
-            return;
-        }
+        if (!Stable(key)) return;
         if (key == _requestedKey)
         {
             SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
@@ -147,6 +137,32 @@ public sealed class Pipeline : IDisposable
         var observation = GameObservation.FromPick(pick, under ?? EditableSandbox.Empty(), _lastText);
         if (_hints.Request(observation, consumeOnly: false)) lock (_gate) _hint = null;
         SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
+    }
+
+    private readonly List<string> _recent = [];
+    private int _changedReads;
+
+    /// <summary>
+    /// 这次读到的局面算不算稳定：最近 4 次里出现过 2 次。不稳定时，若已经和上次推算的局面不同了（走了一步），
+    /// 连着两次不同就先把上一步的推荐撤下，改显示“识别中…”，免得一直挂着过时的红字
+    /// （2026-11-05 实机：走一步后红字不刷新，要回主界面再进来才变）。
+    /// </summary>
+    private bool Stable(string key)
+    {
+        _recent.Add(key);
+        if (_recent.Count > 4) _recent.RemoveAt(0);
+        _lastKey = key;
+        if (key == _requestedKey) { _changedReads = 0; return true; }
+        if (_requestedKey != null && ++_changedReads >= 2)
+        {
+            _changedReads = 0;
+            _requestedKey = null;
+            _hints.Clear();
+            lock (_gate) _hint = null;
+        }
+        if (_recent.Count(k => k == key) >= 2) return true;
+        SetStatus($"识别中… {LastScanMs:0} 毫秒");
+        return false;
     }
 
     private void Clear(string status)
@@ -173,7 +189,8 @@ public sealed class Pipeline : IDisposable
     /// <summary>推荐写成文字，和电脑版主窗口的“当前推荐”一样。</summary>
     private static Shown Describe(Hint? hint, string status)
     {
-        if (hint is not { Ranked: { Count: > 0 } ranked }) return new Shown(status.StartsWith("计算") ? "计算中…" : "暂无", status, null, false, status);
+        if (hint is not { Ranked: { Count: > 0 } ranked })
+            return new Shown(status.StartsWith("计算") ? "计算中…" : status.StartsWith("识别") ? "识别中…" : "暂无", status, null, false, status);
         var best = ranked[0];
         string main = Names.Ranked(hint, best);
         // 和电脑版一样只给收益最高的一步
