@@ -173,8 +173,8 @@ public sealed class SolverService : Service
             {
                 Log.Error("tartarus", ex.ToString());
             }
-            // 大约每 0.7 秒看一次，给游戏留出性能
-            var rest = TimeSpan.FromMilliseconds(700) - (DateTime.Now - started);
+            // 大约每 0.25 秒看一次（识别本身约 0.3 秒，基本是连着看），推荐出得快
+            var rest = TimeSpan.FromMilliseconds(250) - (DateTime.Now - started);
             if (rest > TimeSpan.Zero) Thread.Sleep(rest);
         }
     }

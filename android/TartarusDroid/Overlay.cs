@@ -7,7 +7,7 @@ using Android.Widget;
 namespace TartarusDroid;
 
 /// <summary>
-/// 悬在游戏上面的小窗：大绿字写这一步，下面是次选、预计收获、状态，最下面一排按钮。拖动标题栏可以移动。
+/// 悬在游戏上面的小窗：红字写这一步，下面是、预计收获、状态，最下面一排按钮。拖动标题栏可以移动。
 /// 窗口本身不抢焦点，点小窗以外的地方照常操作游戏。
 /// </summary>
 public sealed class Overlay
@@ -16,7 +16,9 @@ public sealed class Overlay
     private readonly IWindowManager _wm;
     private readonly LinearLayout _root;
     private readonly LinearLayout _body;
-    private readonly TextView _main, _detail, _extra, _status, _autoBtn, _foldBtn;
+    private readonly TextView _main, _detail, _extra, _status, _autoBtn, _foldBtn, _title;
+    private string _lastMain = "";
+    private bool _lastHasHint;
     private readonly WindowManagerLayoutParams _lp;
     private bool _shown, _auto, _folded;
 
@@ -37,7 +39,8 @@ public sealed class Overlay
 
         // 标题栏（拖动这里移动小窗）
         var bar = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
-        var title = Text("⠿ 塔罗斯求解器", 12, Color.Rgb(154, 160, 172));
+        _title = Text("⠿ 塔罗斯求解器", 12, Color.Rgb(154, 160, 172));
+        var title = _title;
         bar.AddView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1));
         _foldBtn = Button("—", () => Fold(!_folded));
         bar.AddView(_foldBtn);
@@ -45,7 +48,7 @@ public sealed class Overlay
         _root.AddView(bar);
 
         _body = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
-        _main = Text("准备中…", 24, Color.Rgb(91, 227, 143), bold: true);
+        _main = Text("准备中…", 24, Color.Rgb(255, 0, 0), bold: true);
         _detail = Text("", 13, Color.Rgb(200, 204, 212));
         _extra = Text("", 12, Color.Rgb(230, 180, 110));
         _status = Text("", 11, Color.Rgb(111, 117, 128));
@@ -68,14 +71,15 @@ public sealed class Overlay
         _root.AddView(_body);
 
         _lp = new WindowManagerLayoutParams(
-            Dp(300), ViewGroup.LayoutParams.WrapContent,
+            Dp(260), ViewGroup.LayoutParams.WrapContent,
             WindowManagerTypes.ApplicationOverlay,
             WindowManagerFlags.NotFocusable | WindowManagerFlags.LayoutNoLimits,
             Format.Translucent)
         {
-            Gravity = GravityFlags.Top | GravityFlags.Start,
+            // 默认在左下角：左上是游戏的目标和刑具栏，挡住了会认不出刑具。可以拖动标题栏换位置
+            Gravity = GravityFlags.Bottom | GravityFlags.Start,
             X = Dp(16),
-            Y = Dp(16),
+            Y = Dp(8),
         };
         Draggable(bar);
     }
@@ -104,8 +108,9 @@ public sealed class Overlay
         _extra.Visibility = s.Extra != null ? ViewStates.Visible : ViewStates.Gone;
         _status.Text = s.HasHint ? s.Status : "";
         _status.Visibility = s.HasHint ? ViewStates.Visible : ViewStates.Gone;
-        // 收起时标题栏显示推荐，不挡游戏
-        if (_folded) _main.Visibility = ViewStates.Gone;
+        _lastMain = s.Main;
+        _lastHasHint = s.HasHint;
+        ShowTitle();
     }
 
     public void Toast(string text) => Android.Widget.Toast.MakeText(_ctx, text, ToastLength.Short)!.Show();
@@ -115,6 +120,24 @@ public sealed class Overlay
         _folded = folded;
         _body.Visibility = folded ? ViewStates.Gone : ViewStates.Visible;
         _foldBtn.Text = folded ? "＋" : "—";
+        ShowTitle();
+    }
+
+    /// <summary>收起时标题栏直接显示推荐（红字），展开时显示软件名。</summary>
+    private void ShowTitle()
+    {
+        if (_folded)
+        {
+            _title.Text = "⠿ " + _lastMain;
+            _title.SetTextColor(_lastHasHint ? Color.Rgb(255, 0, 0) : Color.Rgb(154, 160, 172));
+            _title.SetTextSize(Android.Util.ComplexUnitType.Sp, 16);
+        }
+        else
+        {
+            _title.Text = "⠿ 塔罗斯求解器";
+            _title.SetTextColor(Color.Rgb(154, 160, 172));
+            _title.SetTextSize(Android.Util.ComplexUnitType.Sp, 12);
+        }
     }
 
     private void Draggable(View handle)
@@ -130,7 +153,7 @@ public sealed class Overlay
                     break;
                 case MotionEventActions.Move:
                     _lp.X = startX + (int)(e.Event.RawX - downX);
-                    _lp.Y = startY + (int)(e.Event.RawY - downY);
+                    _lp.Y = startY - (int)(e.Event.RawY - downY);  // 靠底部摆放：Y 是离底边的距离
                     if (_shown) _wm.UpdateViewLayout(_root, _lp);
                     break;
             }
