@@ -102,7 +102,7 @@ public sealed class SolverService : Service
         var (w, h, dpi) = ScreenSize();
         (_w, _h) = (w, h);
         _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1 /* RGBA_8888 */, 2);
-        _display = _projection!.CreateVirtualDisplay("tartarus", w, h, dpi, DisplayFlags.Presentation, _reader.Surface, null, null);
+        _display = _projection!.CreateVirtualDisplay("tartarus", w, h, dpi, DisplayFlags.AutoMirror, _reader.Surface, null, null);
     }
 
     /// <summary>转屏后跟着改大小（同一个授权只能建一次虚拟屏幕，所以改大小而不是重建）。</summary>

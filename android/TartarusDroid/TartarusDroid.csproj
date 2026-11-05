@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationId>com.zh.tartarussolver</ApplicationId>
     <ApplicationTitle>塔罗斯求解器</ApplicationTitle>
-    <ApplicationVersion>4</ApplicationVersion>
-    <ApplicationDisplayVersion>0.4</ApplicationDisplayVersion>
+    <ApplicationVersion>5</ApplicationVersion>
+    <ApplicationDisplayVersion>0.5</ApplicationDisplayVersion>
     <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
     <TartarusAndroid>true</TartarusAndroid>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
