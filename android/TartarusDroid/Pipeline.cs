@@ -19,7 +19,7 @@ public sealed class Pipeline : IDisposable
     private readonly HintService _hints;
     private readonly object _gate = new();
 
-    private string? _lastKey;
+    private string? _lastKey, _requestedKey;
     private EditableSandbox? _lastBoard;
     private ScreenText? _lastText, _textBeforeRed;
     private int? _lastDays, _consumedDay;
@@ -104,6 +104,14 @@ public sealed class Pipeline : IDisposable
         if (consumeOnly) _consumedDay = board.Days;
         else if (!huntPick) _textBeforeRed = r.Text;
 
+        // 同一个局面只推算一次：之后的帧里 OCR 的细小差别（比如读到了浮窗上的字）不会让推算一次次重来、永远算不完
+        // （2026-11-05 实机：一直停在“计算中…”，切屏才恢复）
+        if (key == _requestedKey)
+        {
+            SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
+            return;
+        }
+        _requestedKey = key;
         var hb = huntPick ? _huntOffer!.Value.Board.Clone() : board;
         var text = consumeOnly ? _textBeforeRed ?? r.Text : huntPick ? _huntOffer!.Value.Text : r.Text;
         var observation = GameObservation.From(hb, text, 0);
@@ -122,6 +130,12 @@ public sealed class Pipeline : IDisposable
             SetStatus($"识别中… {LastScanMs:0} 毫秒");
             return;
         }
+        if (key == _requestedKey)
+        {
+            SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
+            return;
+        }
+        _requestedKey = key;
         var under = _lastBoard;
         if (pick.Kind == PickRead.Instrument && (under == null || under.Days == 0)) under = EditableSandbox.Empty();
         var observation = GameObservation.FromPick(pick, under ?? EditableSandbox.Empty(), _lastText);
@@ -131,6 +145,7 @@ public sealed class Pipeline : IDisposable
 
     private void Clear(string status)
     {
+        _requestedKey = null;
         _hints.Clear();
         lock (_gate) _hint = null;
         SetStatus(status);

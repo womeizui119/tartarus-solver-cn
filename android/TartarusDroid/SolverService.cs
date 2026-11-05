@@ -45,6 +45,11 @@ public sealed class SolverService : Service
         if (_projection != null || intent == null) return StartCommandResult.NotSticky;
         Running = this;
         StartForegroundNow();
+        // 崩溃时把原因写进“下载/TartarusSolver/记录-….txt”，发过来就能查
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => Saver.Log(this, "崩溃：" + e.ExceptionObject);
+        TaskScheduler.UnobservedTaskException += (_, e) => { Saver.Log(this, "后台出错：" + e.Exception); e.SetObserved(); };
+        Android.Runtime.AndroidEnvironment.UnhandledExceptionRaiser += (_, e) => Saver.Log(this, "崩溃：" + e.Exception);
+        Saver.Log(this, $"手机：{Build.Manufacturer} {Build.Model} · 安卓 {Build.VERSION.Release} · 版本 {PackageManager!.GetPackageInfo(PackageName!, 0)!.VersionName}");
         int code = intent.GetIntExtra(ExtraCode, 0);
         var data = (Intent?)intent.GetParcelableExtra(ExtraData);
         var mpm = (MediaProjectionManager)GetSystemService(MediaProjectionService)!;
@@ -86,20 +91,22 @@ public sealed class SolverService : Service
             StartForeground(NotificationId, n);
     }
 
-    /// <summary>屏幕现在的大小（横竖屏会变）；长边最多 2400，太大只会更慢。</summary>
+    /// <summary>录屏画面的大小（横竖屏会变）；长边最多 1600：识别不看分辨率，画面小一半，内存和耗时都省很多
+    /// （2026-11-05：2868×1320 的手机按原尺寸录，每张 15MB，一秒四张，几步后被系统杀掉）。</summary>
     private (int W, int H, int Dpi) ScreenSize()
     {
         var wm = Android.Runtime.Extensions.JavaCast<IWindowManager>(GetSystemService(WindowService))!;
         var m = new DisplayMetrics();
         wm.DefaultDisplay!.GetRealMetrics(m);
         int w = m.WidthPixels, h = m.HeightPixels;
-        double k = Math.Min(1.0, 2400.0 / Math.Max(w, h));
-        return ((int)(w * k) & ~1, (int)(h * k) & ~1, (int)m.DensityDpi);
+        double k = Math.Min(1.0, 1600.0 / Math.Max(w, h));
+        return ((int)(w * k) & ~1, (int)(h * k) & ~1, Math.Max(120, (int)((int)m.DensityDpi * k)));
     }
 
     private void CreateDisplay()
     {
         var (w, h, dpi) = ScreenSize();
+        Saver.Log(this, $"录屏画面 {w}×{h}");
         (_w, _h) = (w, h);
         _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1 /* RGBA_8888 */, 2);
         _display = _projection!.CreateVirtualDisplay("tartarus", w, h, dpi, (DisplayFlags)16 /* VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR：镜像整个屏幕 */, _reader.Surface, null, null);
