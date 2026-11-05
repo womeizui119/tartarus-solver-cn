@@ -144,12 +144,28 @@ public sealed class SolverService : Service
                 if (frame != null)
                 {
                     _lastFrame = frame;
+                    _lastFrameAt = DateTime.Now;
+                    // 先存图再识别：识别出错也照样存（出问题的画面正是最需要的）
+                    if (AutoSave && DateTime.Now - _lastAutoSave > TimeSpan.FromSeconds(3)) Save(manual: false);
                     if (frame.Width < frame.Height) Post(new Shown("请横屏", "游戏要横屏玩，求解器才能看清棋盘", null, false, "竖屏"));
                     else
                     {
-                        _pipeline.Process(frame);
-                        if (AutoSave && DateTime.Now - _lastAutoSave > TimeSpan.FromSeconds(3)) Save(manual: false);
+                        try
+                        {
+                            _pipeline.Process(frame);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Error("tartarus", ex.ToString());
+                            Saver.Log(this, "识别出错：" + ex);
+                            Post(new Shown("识别出错", ex.GetType().Name + "：" + ex.Message, null, false, "出错"));
+                        }
                     }
+                }
+                else if (DateTime.Now - _lastFrameAt > TimeSpan.FromSeconds(5))
+                {
+                    Post(new Shown("没拿到画面", "屏幕录制没有画面传过来：请停止后重新打开，并在弹窗里选“整个屏幕”", null, false, "无画面"));
+                    _lastFrameAt = DateTime.Now;
                 }
             }
             catch (Exception ex)
@@ -186,13 +202,41 @@ public sealed class SolverService : Service
     private void Save(bool manual)
     {
         var frame = _lastFrame;
-        if (frame == null) return;
+        if (frame == null)
+        {
+            if (manual) _ui.Post(() => _overlay?.Toast("还没拿到画面，存不了图"));
+            return;
+        }
         _lastAutoSave = DateTime.Now;
-        var scan = _pipeline?.LastScan;
-        string note = scan == null ? "" : $"{(scan.Ok ? "棋盘" : scan.Pick != null ? "选择" : "无")} {scan.Reason} | {(scan.Ok ? SandboxText.Describe(scan) : "")}";
-        string name = Saver.SaveFrame(this, frame, manual, note);
-        if (manual) _ui.Post(() => _overlay?.Toast("已保存：" + name));
+        try
+        {
+            string note = "";
+            try
+            {
+                var scan = _pipeline?.LastScan;
+                note = scan == null ? "" : $"{(scan.Ok ? "棋盘" : scan.Pick != null ? "选择" : "无")} {scan.Reason} | {(scan.Ok ? SandboxText.Describe(scan) : "")}";
+            }
+            catch (Exception) { }
+            string name = Saver.SaveFrame(this, frame, manual, note);
+            _savedCount++;
+            if (manual) _ui.Post(() => _overlay?.Toast("已保存到 下载/TartarusSolver：" + name));
+            else if (_savedCount == 1) _ui.Post(() => _overlay?.Toast("自动存图开始了：每 3 秒一张，存在 下载/TartarusSolver"));
+        }
+        catch (Exception ex)
+        {
+            Log.Error("tartarus", ex.ToString());
+            // 存不了时告诉玩家原因（自动存图每 30 秒最多提示一次）
+            if (manual || DateTime.Now - _lastSaveError > TimeSpan.FromSeconds(30))
+            {
+                _lastSaveError = DateTime.Now;
+                string msg = ex.GetType().Name + "：" + ex.Message;
+                _ui.Post(() => _overlay?.Toast("存图失败：" + msg));
+            }
+        }
     }
+
+    private DateTime _lastFrameAt = DateTime.Now, _lastSaveError = DateTime.MinValue;
+    private int _savedCount;
 
     private void Post(Shown s) => _ui.Post(() => _overlay?.Update(s));
 

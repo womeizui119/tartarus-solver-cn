@@ -98,7 +98,7 @@ public sealed class Overlay
     public void Update(Shown s)
     {
         _main.Text = s.Main;
-        _main.SetTextColor(s.HasHint ? Color.Rgb(91, 227, 143) : Color.Rgb(154, 160, 172));
+        _main.SetTextColor(s.HasHint ? Color.Rgb(255, 0, 0) : Color.Rgb(154, 160, 172));  // 推荐用正红色，和电脑版一致
         _detail.Text = s.Detail;
         _extra.Text = s.Extra ?? "";
         _extra.Visibility = s.Extra != null ? ViewStates.Visible : ViewStates.Gone;

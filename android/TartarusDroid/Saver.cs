@@ -24,10 +24,11 @@ public static class Saver
         values.Put(MediaStore.IMediaColumns.DisplayName, name);
         values.Put(MediaStore.IMediaColumns.MimeType, png ? "image/png" : "image/jpeg");
         values.Put(MediaStore.IMediaColumns.RelativePath, Folder);
-        var uri = ctx.ContentResolver!.Insert(MediaStore.Downloads.ExternalContentUri!, values);
-        if (uri == null) return name;
-        using (var output = ctx.ContentResolver.OpenOutputStream(uri)!)
-            bitmap.Compress(png ? Bitmap.CompressFormat.Png! : Bitmap.CompressFormat.Jpeg!, png ? 100 : 90, output);
+        var uri = ctx.ContentResolver!.Insert(MediaStore.Downloads.ExternalContentUri!, values)
+            ?? throw new IOException("手机不让在“下载”文件夹里建文件");
+        using (var output = ctx.ContentResolver.OpenOutputStream(uri) ?? throw new IOException("打不开要写的文件"))
+            if (!bitmap.Compress(png ? Bitmap.CompressFormat.Png! : Bitmap.CompressFormat.Jpeg!, png ? 100 : 90, output))
+                throw new IOException("图片压缩失败");
         Log(ctx, $"{name}\t{note}");
         return name;
     }
