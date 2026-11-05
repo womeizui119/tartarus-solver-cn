@@ -65,7 +65,7 @@ public sealed partial class SandboxOverlayView : FrameworkElement
     public static double FontScale { get; set; } = 1.0;
 
     /// <summary>中文版：画面上方那行推荐的红字。</summary>
-    private static readonly Brush BannerBrush = Freeze(new SolidColorBrush(Color.FromRgb(255, 77, 77)));
+    private static readonly Brush BannerBrush = Freeze(new SolidColorBrush(Color.FromRgb(255, 0, 0)));
 
     private static readonly Typeface Face = new(Loc.Font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
 

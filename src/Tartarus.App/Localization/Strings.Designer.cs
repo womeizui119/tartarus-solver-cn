@@ -301,4 +301,6 @@ public static class Strings
     public static string Cn_UpdateNew => Get(nameof(Cn_UpdateNew));
     public static string Cn_UpdateCheckFailed => Get(nameof(Cn_UpdateCheckFailed));
     public static string Cn_ReportSaved => Get(nameof(Cn_ReportSaved));
+    public static string Cn_WindowOpacity => Get(nameof(Cn_WindowOpacity));
+    public static string Cn_WindowOpacity_Tip => Get(nameof(Cn_WindowOpacity_Tip));
 }

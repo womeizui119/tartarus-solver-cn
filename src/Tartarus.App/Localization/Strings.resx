@@ -299,4 +299,6 @@ Unpack the whole archive into a folder of its own and run the program from there
 {0}
 
 To report the problem, send the newest report-*.zip to whoever helps you.</value></data>
+  <data name="Cn_WindowOpacity" xml:space="preserve"><value>Window opacity</value></data>
+  <data name="Cn_WindowOpacity_Tip" xml:space="preserve"><value>Make this window see-through, so it can sit over the game</value></data>
 </root>

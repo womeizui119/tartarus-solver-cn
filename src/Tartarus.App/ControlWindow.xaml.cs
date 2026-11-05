@@ -116,6 +116,9 @@ public partial class ControlWindow : Window
         FontScaleSlider.Value = settings.OverlayFontScale;
         FontScaleText.Text = $"{settings.OverlayFontScale * 100:0}%";
         _fontScaleReady = true;
+        settings.WindowOpacity = Math.Clamp(Math.Round(settings.WindowOpacity, 2), 0.3, 1);
+        OpacitySlider.Value = settings.WindowOpacity;
+        OpacityText.Text = $"{settings.WindowOpacity * 100:0}%";
 
         settings.AutoScanSeconds = Math.Clamp(Math.Round(settings.AutoScanSeconds, 1), 0, 1);
         IntervalSlider.Value = settings.AutoScanSeconds;
@@ -160,6 +163,7 @@ public partial class ControlWindow : Window
     {
         base.OnSourceInitialized(e);
         new WindowInteropHelper(_overlay).EnsureHandle();
+        ApplyWindowOpacity();
         _hotkeys = new HotkeyManager(HwndSource.FromHwnd(new WindowInteropHelper(this).Handle));
         var failed = new List<string>();
         void Hotkey(string action, Action run)
@@ -1707,7 +1711,7 @@ public partial class ControlWindow : Window
         RecommendChests.Visibility = chests != null ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private static readonly System.Windows.Media.Brush RecommendOn = MakeBrush(0xFF, 0x4D, 0x4D), RecommendOff = MakeBrush(0x9A, 0xA0, 0xAC);
+    private static readonly System.Windows.Media.Brush RecommendOn = MakeBrush(0xFF, 0x00, 0x00), RecommendOff = MakeBrush(0x9A, 0xA0, 0xAC);
     private static readonly System.Windows.Media.Brush DotOn = MakeBrush(0x4C, 0xC3, 0x8A), DotWait = MakeBrush(0xE6, 0xB4, 0x6E), DotOff = MakeBrush(0x6F, 0x75, 0x80);
 
     private static System.Windows.Media.Brush MakeBrush(byte r, byte g, byte b)
@@ -1730,6 +1734,28 @@ public partial class ControlWindow : Window
         StatusDot.Fill = _capture != null ? DotOn : CaptureStatus.Text == Strings.Status_NotCapturing ? DotOff : DotWait;
 
     private bool _fontScaleReady;
+
+    /// <summary>中文版：主窗口透明度。用分层窗口做，不用改窗口边框；100% 时去掉分层，和原来一样。</summary>
+    private void ApplyWindowOpacity()
+    {
+        IntPtr h = new WindowInteropHelper(this).Handle;
+        if (h == IntPtr.Zero) return;
+        double o = _settings.WindowOpacity;
+        if (o >= 0.999) { Native.RemoveExStyle(h, Native.WS_EX_LAYERED); return; }
+        Native.AddExStyle(h, Native.WS_EX_LAYERED);
+        Native.SetLayeredWindowAttributes(h, 0, (byte)Math.Round(o * 255), Native.LWA_ALPHA);
+    }
+
+    private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_fontScaleReady) return;
+        double o = Math.Round(OpacitySlider.Value, 2);
+        OpacityText.Text = $"{o * 100:0}%";
+        if (o == _settings.WindowOpacity) return;
+        _settings.WindowOpacity = o;
+        _settings.Save();
+        ApplyWindowOpacity();
+    }
 
     private void FontScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {

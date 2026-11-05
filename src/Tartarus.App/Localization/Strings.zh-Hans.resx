@@ -299,4 +299,6 @@
 {0}
 
 需要反馈时，把最新的 report-*.zip 发给帮你排查的人即可。</value></data>
+  <data name="Cn_WindowOpacity" xml:space="preserve"><value>窗口透明度</value></data>
+  <data name="Cn_WindowOpacity_Tip" xml:space="preserve"><value>让本窗口半透明，可以叠在游戏上看</value></data>
 </root>

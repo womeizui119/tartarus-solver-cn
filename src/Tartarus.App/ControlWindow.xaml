@@ -120,6 +120,12 @@
                   ValueChanged="FontScaleSlider_ValueChanged" />
           <TextBlock x:Name="FontScaleText" Margin="6,0,0,0" Text="100%" />
         </StackPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,6,0,0" ToolTip="{x:Static res:Strings.Cn_WindowOpacity_Tip}">
+          <TextBlock Text="{x:Static res:Strings.Cn_WindowOpacity}" Margin="0,0,6,0" />
+          <Slider x:Name="OpacitySlider" Width="160" Minimum="0.3" Maximum="1" SmallChange="0.05" LargeChange="0.1" IsSnapToTickEnabled="True" TickFrequency="0.05"
+                  ValueChanged="OpacitySlider_ValueChanged" />
+          <TextBlock x:Name="OpacityText" Margin="6,0,0,0" Text="100%" />
+        </StackPanel>
 
         <!-- 游戏日志 -->
         <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Main_GameLog}" />

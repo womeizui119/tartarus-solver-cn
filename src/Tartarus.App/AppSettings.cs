@@ -83,6 +83,8 @@ public sealed class AppSettings
     public string UiLanguage { get; set; } = "zh";
     /// <summary>中文版：浮层文字大小，0.8 到 1.6 倍。</summary>
     public double OverlayFontScale { get; set; } = 1.0;
+    /// <summary>中文版：主窗口不透明度，0.3 到 1。</summary>
+    public double WindowOpacity { get; set; } = 1.0;
     /// <summary>A random id of this install: tells one tester's reports from another's, and nothing else about them.</summary>
     public string InstallId { get; set; } = Guid.NewGuid().ToString("N")[..12];
     /// <summary>Ask GitHub for a new version (the player's window; never with --debug).</summary>

@@ -38,6 +38,8 @@ internal static class Native
     [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr h, int id, uint mods, uint vk);
     [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr h, int id);
     [DllImport("user32.dll")] public static extern bool SetWindowDisplayAffinity(IntPtr h, uint affinity);
+    [DllImport("user32.dll")] public static extern bool SetLayeredWindowAttributes(IntPtr h, uint key, byte alpha, uint flags);
+    public const uint LWA_ALPHA = 0x2;
 
     public const uint GUI_INMOVESIZE = 2, GUI_INMENUMODE = 4, GUI_SYSTEMMENUMODE = 8, GUI_POPUPMENUMODE = 0x10;
 
