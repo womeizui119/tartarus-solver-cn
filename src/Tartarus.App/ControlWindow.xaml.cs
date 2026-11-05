@@ -103,9 +103,9 @@ public partial class ControlWindow : Window
         // and bug reports.
         if (!settings.Debug)
             foreach (var panel in new FrameworkElement[] { ViewPanel, HintsCheck, HintsOnlyCheck, DebugPanel }) panel.Visibility = Visibility.Collapsed;
-        VersionText.Text = Strings.Main_Version + " " + AppVersion.Short + Strings.Cn_Edition;
+        VersionText.Text = Strings.Main_Version + " " + AppVersion.Short + Loc.F(Strings.Cn_Edition, AppVersion.Upstream);
         VersionText.ToolTip = AppVersion.Full;
-        Log("Version " + AppVersion.Short + (BugReports.Enabled ? "" : " · bug reports not set up"));
+        Log("Version " + AppVersion.Short + " (upstream " + AppVersion.Upstream + ")" + (BugReports.Enabled ? "" : " · bug reports not set up"));
         // 中文版：设置默认收起（调试窗口展开）；状态灯和当前推荐跟着连接状态变。
         ShowSettings(settings.Debug);
         System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock))

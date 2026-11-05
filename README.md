@@ -33,8 +33,13 @@
 
 ## 跟进原版
 
-`tools/zh/build_zh.py` 会把中文版改动搬到原版的新版本上、编译并打包（版本号为原版号加一位修订号，如 0.7.44.1）。
+`tools/zh/build_zh.py` 会把中文版改动搬到原版的新版本上、编译并打包（中文版有自己的版本号，从 1.0.0 起；所基于的原版版本记在 Directory.Build.props 的 TartarusUpstream）。
 
 ## 协议
 
 MIT。原作品 Copyright (c) 2026 Artem Gurevich，详见 [LICENSE](LICENSE)。
+
+## 备份
+
+本仓库每天自动备份原版的源码（`upstream/` 开头的分支和标签）和最近的官方发布包（`upstream-v…` 预发布版本）。
+原版仓库哪天取不到了，中文版照样能编译、出包、更新。

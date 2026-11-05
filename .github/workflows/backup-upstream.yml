@@ -1,0 +1,40 @@
+# 自动备份原版：每天把原作者 glcoder/TartarusSolver 的源码（分支、标签）和最近几个官方发布包存进本仓库。
+# 原版仓库哪天没了或不让用了，中文版照样能编译、出包、更新（出包脚本会自动改用这里的备份）。
+name: 自动备份原版
+on:
+  schedule:
+    - cron: '23 19 * * *'   # 北京时间每天 03:23
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 备份原版源码
+        run: |
+          git remote add upstream https://github.com/glcoder/TartarusSolver.git
+          if git fetch --no-tags upstream '+refs/heads/*:refs/heads/upstream/*' '+refs/tags/*:refs/tags/upstream/*'; then
+            git push origin 'refs/heads/upstream/*:refs/heads/upstream/*' 'refs/tags/upstream/*:refs/tags/upstream/*' \
+              || echo "::warning::原版源码推送失败（可能原版加了 GitHub 流程文件），已有的备份不受影响"
+          else
+            echo "::warning::原版仓库取不到了：继续用已有的备份"
+          fi
+      - name: 备份原版发布包
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tags=$(gh api 'repos/glcoder/TartarusSolver/releases?per_page=5' --jq '.[].tag_name') || { echo "::warning::原版发布页取不到了"; exit 0; }
+          for t in $tags; do
+            if gh release view "upstream-$t" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "已备份 $t"; continue; fi
+            mkdir -p "dl/$t"
+            gh release download "$t" -R glcoder/TartarusSolver -D "dl/$t" || { echo "::warning::$t 下载失败"; continue; }
+            gh release create "upstream-$t" dl/$t/* -R "$GITHUB_REPOSITORY" --prerelease --latest=false --target main \
+              --title "原版备份 $t" \
+              --notes "原作者 glcoder/TartarusSolver $t 的官方发布包备份（MIT 协议，版权归原作者 Artem Gurevich），供中文版出包使用。这不是中文版，中文版请下载最新的正式版本。"
+            rm -rf "dl/$t"
+            echo "新备份 $t"
+          done

@@ -28,8 +28,12 @@ public static class AppVersion
         ("weights", @"solver\weights.txt"),
     ];
 
-    // 中文版：第四段是中文版修订号，有就显示（0.7.44.1）。
+    // 中文版：自己的版本号（1.0.0）；早先的 0.7.44.x 第四段是修订号，有就显示。
     public static string Number { get; } = typeof(AppVersion).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" + (v.Revision > 0 ? $".{v.Revision}" : "") : "?";
+
+    /// <summary>中文版：所基于的原版版本（如 0.7.44）。</summary>
+    public static string Upstream { get; } = typeof(AppVersion).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+        .OfType<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "TartarusUpstream")?.Value ?? "?";
 
     public static DateTime Built { get; } = File.GetLastWriteTime(Environment.ProcessPath ?? typeof(AppVersion).Assembly.Location);
 
@@ -40,7 +44,7 @@ public static class AppVersion
         + string.Concat(Models.Where(m => m.Name is "cells" or "value" or "policy" or "picks").Select(m => $" · {m.Name} {m.Trained:dd.MM} {m.Hash}"));
 
     /// <summary>Every model, one per line.</summary>
-    public static string Full => $"Tartarus Solver {Number}, built {Built:yyyy-MM-dd HH:mm}"
+    public static string Full => $"Tartarus Solver CN {Number} (upstream {Upstream}), built {Built:yyyy-MM-dd HH:mm}"
         + string.Concat(Models.Select(m => $"\n{m.Name}: {m.Hash}, {m.Trained:yyyy-MM-dd HH:mm} ({m.Path})"));
 
     private static List<Model> FindModels()

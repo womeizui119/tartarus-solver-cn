@@ -1,21 +1,24 @@
-"""中文版一键出包：把汉化改动搬到原版的某个版本上，编译，替换进官方发布包，打出中文版 zip。
+"""中文版一键出包：编译中文版，替换进原版的官方发布包，打出中文版 zip；也能把中文版改动搬到原版的新版本上。
 
 用法（在仓库根目录，需要 git、.NET 9 SDK、Python 3；发布还需要 gh 命令行）：
-    python tools/zh/build_zh.py 0.7.45             # 跟进原版 v0.7.45，出 0.7.45.1 中文版
-    python tools/zh/build_zh.py 0.7.44 --no-port   # 不搬提交，直接用当前源码出包
-    python tools/zh/build_zh.py 0.7.44 --no-port --publish   # 出包后发布到本仓库的 GitHub Release
+    python tools/zh/build_zh.py                    # 用当前源码出包
+    python tools/zh/build_zh.py --publish          # 出包后发布到本仓库的 GitHub Release
+    python tools/zh/build_zh.py --port 0.7.45      # 把中文版改动搬到原版 v0.7.45 上（中文版版本号次位 +1），再出包
 
-中文版版本号 = 原版版本号 + 第四段修订号（0.7.44.1、0.7.44.2…），软件内的自动更新按它判断新旧。
-发布包名 TartarusSolver-<中文版版本>-zh.zip / -zh-full.zip，软件更新时按这个名字找。
+版本号：中文版有自己的版本号（Directory.Build.props 的 <Version>，从 1.0.0 起只往上加，自动更新按它判断新旧），
+所基于的原版版本记在 <TartarusUpstream>。发布包名 TartarusSolver-<中文版版本>-zh.zip / -zh-full.zip（软件更新按这个名字找）。
+
+原版官方包（里面有识别模型和运行库）先从原作者的发布页下载；下载不到时，用本仓库 Release 里的备份
+（tag upstream-v<原版版本>，由“备份原版”流程建）。
 
 步骤：
-1. 取原版 tag v<版本>，在其上新建分支 zh-<版本>，把中文版提交（当前分支上、原版 tag 之后的提交）逐个搬过去。
-   有冲突时停下来，说明哪些文件冲突，改好后 `git cherry-pick --continue` 再重跑本脚本加 --no-port。
+1. （--port）取原版 tag，在其上新建分支 zh-<原版版本>，把中文版提交逐个搬过去。有冲突时停下来，说明哪些文件冲突。
 2. 编译 src/Tartarus.App（Release，win-x64；非 Windows 上自动加 EnableWindowsTargeting）。
-3. 下载官方 TartarusSolver-<版本>.zip 和 -full.zip，把 TartarusSolver.dll、Tartarus.*.dll 和各语言的
-   TartarusSolver.resources.dll 换成新编译的，README.txt 换成中文说明，加上 LICENSE（MIT，保留原作者版权）。
-4. 核对：文件清单与官方包一致（只多了 LICENSE）；带着中文界面文字，且不含原作者的错误上报地址。
-5. 加 --publish 时，在本仓库建 tag v<中文版版本> 的 Release 并上传两个包。
+   环境变量 TARTARUS_SENTRY_DSN 有值时，问题报告会发到这个 Sentry 项目；没有就只存在玩家本机。
+3. 把官方包里的 exe、TartarusSolver.dll、Tartarus.*.dll 和各语言 TartarusSolver.resources.dll 换成新编译的，
+   程序文件夹和 exe 改中文名，README.txt 换成中文说明，加上 LICENSE（MIT，保留原作者版权）。
+4. 核对：文件清单与官方包一致（只多了 LICENSE）；带着中文界面文字和中文图标。
+5. （--publish）在本仓库建 tag v<中文版版本> 的 Release 并上传两个包。
 """
 import argparse, os, platform, re, shutil, subprocess, sys, urllib.request, zipfile
 from pathlib import Path
@@ -28,6 +31,16 @@ RUNTIME_NEEDED = ("\n需要先安装 .NET 9 桌面运行时 (x64)：https://dotn
 RUNTIME_BUNDLED = "\n完整版已自带 .NET 和 VC++ 运行库，无需额外安装。\n"
 MARKERS = ["当前推荐", "窗口透明度"]  # zh-Hans 资源包里应有的中文版文字
 REPO = "womeizui119/tartarus-solver-cn"
+PROPS = ROOT / "Directory.Build.props"
+
+
+def prop(name):
+    return re.search(rf"<{name}>([^<]+)</{name}>", PROPS.read_text(encoding="utf-8")).group(1)
+
+
+def set_prop(name, value):
+    text = PROPS.read_bytes().decode("utf-8")
+    PROPS.write_bytes(re.sub(rf"<{name}>[^<]+</{name}>", f"<{name}>{value}</{name}>", text, count=1).encode("utf-8"))
 
 
 def run(*cmd, cwd=ROOT, check=True):
@@ -47,14 +60,16 @@ def zh_commits(base_tag):
 
 
 def current_base():
-    """当前分支所基于的原版 tag（离 HEAD 最近的 vX.Y.Z）。"""
-    return run("git", "describe", "--tags", "--abbrev=0", "--match", "v*", "--exclude", "v*.*.*.*").stdout.strip()
+    """当前源码所基于的原版 tag。"""
+    return "v" + prop("TartarusUpstream")
 
 
 def port(version):
     tag = f"v{version}"
     run("git", "fetch", "--tags", "--depth", "50", UPSTREAM, check=False)
     run("git", "fetch", UPSTREAM, f"refs/tags/{tag}:refs/tags/{tag}", check=False)
+    # 原版仓库没了时，用本仓库的备份（“自动备份原版”流程存的 upstream/<tag>）
+    run("git", "fetch", "origin", f"refs/tags/upstream/{tag}:refs/tags/{tag}", check=False)
     if run("git", "rev-parse", "-q", "--verify", f"{tag}^{{commit}}", check=False).returncode != 0:
         sys.exit(f"原版没有 {tag} 这个版本。")
     base = current_base()
@@ -71,21 +86,16 @@ def port(version):
             sys.exit("搬汉化改动时有冲突（原版改了同一处代码）：\n  " + "\n  ".join(conflicts)
                      + "\n改好后执行 git add 这些文件、git cherry-pick --continue，再加 --no-port 重跑本脚本。")
     print(f"已在 {tag} 上建好分支 {branch}，搬了 {len(commits)} 个汉化提交。")
-    set_version(f"{version}.1")
-
-
-def set_version(v):
-    props = ROOT / "Directory.Build.props"
-    text = props.read_bytes().decode("utf-8")
-    new = re.sub(r"<Version>[^<]+</Version>", f"<Version>{v}</Version>", text, count=1)
-    if new != text:
-        props.write_bytes(new.encode("utf-8"))
-        run("git", "-c", "user.name=zh", "-c", "user.email=zh@local", "commit", "-qam", f"中文版 {v}")
+    major, minor, *_ = (int(x) for x in prop("Version").split("."))
+    zhver = f"{major}.{minor + 1}.0"
+    set_prop("TartarusUpstream", version)
+    set_prop("Version", zhver)
+    run("git", "-c", "user.name=zh", "-c", "user.email=zh@local", "commit", "-qam", f"中文版 {zhver}（基于原版 {version}）")
 
 
 def build():
     dotnet = shutil.which("dotnet") or str(Path.home() / ".dotnet" / ("dotnet.exe" if os.name == "nt" else "dotnet"))
-    cmd = [dotnet, "build", "src/Tartarus.App/Tartarus.App.csproj", "-c", "Release", "-p:TARTARUS_SENTRY_DSN="]
+    cmd = [dotnet, "build", "src/Tartarus.App/Tartarus.App.csproj", "-c", "Release", "-p:TARTARUS_SENTRY_DSN=" + os.environ.get("TARTARUS_SENTRY_DSN", "")]
     if platform.system() != "Windows":
         cmd.append("-p:EnableWindowsTargeting=true")
     r = run(*cmd)
@@ -98,13 +108,19 @@ def build():
 
 
 def download(version, name, dest):
-    url = f"{UPSTREAM}/releases/download/v{version}/{name}"
     if dest.exists():
         return dest
-    print("下载", url)
-    with urllib.request.urlopen(url) as r, open(dest, "wb") as f:
-        shutil.copyfileobj(r, f)
-    return dest
+    for url in (f"{UPSTREAM}/releases/download/v{version}/{name}",
+                f"https://github.com/{REPO}/releases/download/upstream-v{version}/{name}"):  # 本仓库的备份
+        print("下载", url)
+        try:
+            with urllib.request.urlopen(url) as r, open(dest, "wb") as f:
+                shutil.copyfileobj(r, f)
+            return dest
+        except Exception as e:
+            print("  下载不到：", e)
+            dest.unlink(missing_ok=True)
+    sys.exit(f"原版和备份里都没有 {name}")
 
 
 def package(version, zhver, bin_dir, out):
@@ -165,8 +181,9 @@ def check(official, target):
         missing = [m for m in MARKERS if m.encode("utf-8") not in res and m.encode("utf-16-le") not in res]
         if missing:
             sys.exit(f"{target.name}：主程序里没有中文界面文字 {missing}")
-        if b".sentry.io" in dll:
-            sys.exit(f"{target.name}：主程序里带着原作者的错误上报地址")
+        dsn = os.environ.get("TARTARUS_SENTRY_DSN", "")
+        if b".sentry.io" in dll and (not dsn or dsn.encode() not in dll):
+            sys.exit(f"{target.name}：主程序里带着别人的错误上报地址")
         if b.testzip() is not None:
             sys.exit(f"{target.name}：压缩包损坏")
     print(f"核对通过：{target.name}（{target.stat().st_size / 1048576:.1f} MB）")
@@ -182,24 +199,38 @@ def publish(zhver, version, files):
     print("已发布：", f"https://github.com/{REPO}/releases/tag/v{zhver}")
 
 
+def ocr_from_official(version, out):
+    """编译要用的 OCR 模型从原版官方包里取（原本从第三方网站下载）：官方包有备份，就不再依赖那些网站。"""
+    out.mkdir(parents=True, exist_ok=True)
+    dest = ROOT / "models" / "ocr"
+    dest.mkdir(parents=True, exist_ok=True)
+    official = download(version, f"TartarusSolver-{version}.zip", out / f"TartarusSolver-{version}.zip")
+    with zipfile.ZipFile(official) as z:
+        for info in z.infolist():
+            rel = info.filename.replace("\\", "/")
+            if rel.startswith("TartarusSolver/models/ocr/") and not info.is_dir():
+                target = dest / rel.rsplit("/", 1)[-1]
+                if not target.exists():
+                    target.write_bytes(z.read(info))
+                    print("OCR 模型取自官方包：", target.name)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("version", help="原版版本号，如 0.7.40")
+    ap.add_argument("--port", metavar="原版版本", help="把中文版改动搬到原版这个版本上，如 0.7.45")
     ap.add_argument("--out", type=Path, default=ROOT / "dist-zh")
-    ap.add_argument("--no-port", action="store_true", help="不搬提交（已手动解决冲突时）")
     ap.add_argument("--publish", action="store_true", help="出包后发布到 GitHub Release")
     a = ap.parse_args()
-    if not a.no_port:
-        port(a.version)
-    props = (ROOT / "Directory.Build.props").read_text(encoding="utf-8")
-    built = re.search(r"<Version>([^<]+)</Version>", props).group(1)
-    if not built.startswith(a.version + "."):
-        sys.exit(f"源码版本是 {built}，不是 {a.version}.x：先切到对应分支。")
-    made = package(a.version, built, build(), a.out)
+    if a.port:
+        port(a.port)
+    upstream, zhver = prop("TartarusUpstream"), prop("Version")
+    print(f"中文版 {zhver}，基于原版 {upstream}")
+    ocr_from_official(upstream, a.out)
+    made = package(upstream, zhver, build(), a.out)
     for z in made:
         print("出包：", z)
     if a.publish:
-        publish(built, a.version, made)
+        publish(zhver, upstream, made)
 
 
 if __name__ == "__main__":
