@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 塔罗斯监狱求解器 安卓浮窗版：录屏看游戏画面，浮窗写出这一步怎么走。识别和推算与电脑版同一套代码。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>29</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationId>com.zh.tartarussolver</ApplicationId>
+    <ApplicationTitle>塔罗斯求解器</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+    <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+    <TartarusAndroid>true</TartarusAndroid>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidStoreUncompressedFileExtensions>.onnx;.bin</AndroidStoreUncompressedFileExtensions>
+    <!-- 固定签名：密钥不放进仓库，放在本机 ~/.tartarus-keys/（signing.props 和 tartarus.keystore）；没有时用调试签名 -->
+    <NoWarn>$(NoWarn);CA1416;CA1422;XA0101;CS0618</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tartarus.Rules\Tartarus.Rules.csproj" AdditionalProperties="TartarusAndroid=true" />
+    <ProjectReference Include="..\..\src\Tartarus.Vision\Tartarus.Vision.csproj" AdditionalProperties="TartarusAndroid=true" />
+    <ProjectReference Include="..\..\src\Tartarus.Solver\Tartarus.Solver.csproj" AdditionalProperties="TartarusAndroid=true" />
+  </ItemGroup>
+
+  <!-- 安卓自带的 Android.App.GameState 和推算库的 GameState 同名：不自动引用 Android.App -->
+  <ItemGroup>
+    <Using Remove="Android.App" />
+  </ItemGroup>
+
+  <!-- 与电脑版共用：推算服务、中文名 -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Tartarus.App\HintService.cs" Link="Shared\HintService.cs" />
+    <Compile Include="..\..\src\Tartarus.App\Zh.cs" Link="Shared\Zh.cs" />
+  </ItemGroup>
+
+  <!-- 模型随安装包，首次启动解压到 App 数据目录（俄文识别模型用不到，不带） -->
+  <ItemGroup>
+    <AndroidAsset Include="..\..\models\**\*" Exclude="..\..\models\ocr\rec_eslav.onnx;..\..\models\ocr\dict_eslav.txt;..\..\models\**\*.md"
+                  Link="Assets\models\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <Import Project="$(UserProfile)$(HOME)/.tartarus-keys/signing.props" Condition="Exists('$(UserProfile)$(HOME)/.tartarus-keys/signing.props')" />
+</Project>

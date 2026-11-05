@@ -28,7 +28,8 @@ public static class AppVersion
         ("weights", @"solver\weights.txt"),
     ];
 
-    public static string Number { get; } = typeof(AppVersion).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "?";
+    // 中文版：第四段是中文版修订号，有就显示（0.7.44.1）。
+    public static string Number { get; } = typeof(AppVersion).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" + (v.Revision > 0 ? $".{v.Revision}" : "") : "?";
 
     public static DateTime Built { get; } = File.GetLastWriteTime(Environment.ProcessPath ?? typeof(AppVersion).Assembly.Location);
 

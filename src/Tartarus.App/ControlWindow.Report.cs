@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Tartarus.App.Localization;
 using Tartarus.Vision;
 using Frame = Tartarus.Vision.Frame;
 
@@ -73,7 +75,16 @@ public partial class ControlWindow
             PlaceOverlay();
             var window = new ReportWindow(report);
             if (IsVisible) window.Owner = this;
-            if (window.ShowDialog() == true && window.Result != null) Log(window.Result);
+            if (window.ShowDialog() == true && window.Result != null)
+            {
+                Log(window.Result);
+                // 中文版：编译时不带上报地址，报告只存本机：告诉玩家存在哪，并打开文件夹。
+                if (!BugReports.Enabled && Directory.Exists(BugReports.Folder))
+                {
+                    MessageBox.Show(this, Loc.F(Strings.Cn_ReportSaved, BugReports.Folder), Strings.Cn_AppName, MessageBoxButton.OK, MessageBoxImage.Information);
+                    Process.Start(new ProcessStartInfo("explorer.exe", $"\"{BugReports.Folder}\"") { UseShellExecute = true });
+                }
+            }
         }
         catch (Exception ex)
         {

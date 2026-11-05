@@ -2,9 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:res="clr-namespace:Tartarus.App.Localization"
-        Title="Tartarus Solver" Width="520" SizeToContent="Height" MinHeight="300"
+        Title="Tartarus Solver" Width="480" SizeToContent="Height" MinHeight="200"
         Topmost="False" ResizeMode="CanMinimize" FontFamily="Segoe UI" FontSize="12"
         Background="#1E1F24" Foreground="#E8E8EC">
+  <!-- 中文版：最上面是“当前推荐”（这一步怎么走），连接状态和两个按钮在下面；其余设置都收进“设置”里，默认收起。 -->
   <Window.Resources>
     <Style TargetType="Button">
       <Setter Property="Padding" Value="8,3" />
@@ -23,77 +24,132 @@
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0,10,0,4" />
     </Style>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="#26282F" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style x:Key="Dim" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#9AA0AC" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
     <Style x:Key="LabelBox" TargetType="TextBox">
       <Setter Property="Margin" Value="4,1,10,1" />
       <Setter Property="MinWidth" Value="40" />
     </Style>
   </Window.Resources>
   <StackPanel Margin="10">
-    <!-- Target window and capture -->
-    <TextBlock Style="{StaticResource Section}" Margin="0,0,0,4" Text="{x:Static res:Strings.Main_GameWindow}" />
-    <DockPanel>
-      <Button x:Name="RefreshButton" DockPanel.Dock="Right" Margin="6,0,0,0" Content="⟳" ToolTip="{x:Static res:Strings.Main_RefreshWindows_Tip}" Click="RefreshButton_Click" />
-      <ComboBox x:Name="WindowCombo" />
-    </DockPanel>
-    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-      <Button x:Name="CaptureButton" Content="{x:Static res:Strings.Main_Capture}" Click="CaptureButton_Click" />
-      <CheckBox x:Name="AutoAttachCheck" Content="{x:Static res:Strings.Main_AutoAttach}" IsChecked="True" />
-    </StackPanel>
-    <TextBlock x:Name="CaptureStatus" Margin="0,4,0,0" Foreground="#9AA0AC" TextWrapping="Wrap" Text="{x:Static res:Strings.Status_NotCapturing}" />
 
-    <!-- Scanning -->
-    <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Main_Recognition}" />
-    <StackPanel Orientation="Horizontal">
-      <Button x:Name="ScanButton" Content="{x:Static res:Strings.Main_Scan}" Click="ScanButton_Click" />
-      <CheckBox x:Name="AutoScanCheck" Content="{x:Static res:Strings.Main_Auto}" Margin="0,0,4,0" Checked="AutoScanCheck_Changed" Unchecked="AutoScanCheck_Changed" />
-      <Slider x:Name="IntervalSlider" Width="110" Minimum="0" Maximum="1" SmallChange="0.1" LargeChange="0.1" IsSnapToTickEnabled="True" TickFrequency="0.1" TickPlacement="BottomRight"
-              ValueChanged="IntervalSlider_ValueChanged" ToolTip="{x:Static res:Strings.Main_ScanInterval_Tip}" />
-      <TextBlock x:Name="IntervalText" Margin="6,0,0,0" Text="0.5 s" />
-    </StackPanel>
-    <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                ToolTip="{x:Static res:Strings.Main_GameLanguage_Tip}">
-      <TextBlock Text="{x:Static res:Strings.Main_GameLanguage}" Margin="0,0,6,0" />
-      <ComboBox x:Name="GameLanguageCombo" Width="230" />
-    </StackPanel>
-    <StackPanel x:Name="ViewPanel" Orientation="Horizontal" Margin="0,6,0,0">
+    <!-- 当前推荐 -->
+    <Border Style="{StaticResource Card}" Padding="14,12">
+      <StackPanel>
+        <TextBlock Text="{x:Static res:Strings.Cn_Recommend}" Foreground="#9AA0AC" />
+        <TextBlock x:Name="RecommendText" FontSize="26" FontWeight="Bold" Foreground="#9AA0AC" TextWrapping="Wrap" Margin="0,2,0,0" Text="{x:Static res:Strings.Cn_None}" />
+        <TextBlock x:Name="RecommendDetail" FontSize="13" Foreground="#C8CCD4" TextWrapping="Wrap" Margin="0,4,0,0" Text="{x:Static res:Strings.Cn_NoneDetail}" />
+        <TextBlock x:Name="RecommendChests" FontSize="13" Foreground="#E6B46E" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed" />
+      </StackPanel>
+    </Border>
+
+    <!-- 连接状态 -->
+    <DockPanel Margin="2,0,0,8">
+      <Button x:Name="CaptureButton" DockPanel.Dock="Right" Margin="6,0,0,0" Content="{x:Static res:Strings.Main_Capture}" Click="CaptureButton_Click" />
+      <Ellipse x:Name="StatusDot" Width="10" Height="10" Fill="#6F7580" Margin="0,0,8,0" VerticalAlignment="Center" />
+      <TextBlock x:Name="CaptureStatus" TextWrapping="Wrap" Foreground="#C8CCD4" Text="{x:Static res:Strings.Status_NotCapturing}" />
+    </DockPanel>
+
+    <!-- 底部按钮 -->
+    <DockPanel>
+      <Button x:Name="UpdateButton" DockPanel.Dock="Right" Margin="6,0,0,0" Visibility="Collapsed" Click="UpdateButton_Click" />
+      <Button x:Name="SettingsButton" Content="{x:Static res:Strings.Cn_Settings}" Click="SettingsButton_Click" />
+      <Button x:Name="ReportButton" Content="{x:Static res:Strings.Main_ReportBug}" ToolTip="{x:Static res:Strings.Main_ReportBug_Tip}" Click="ReportButton_Click" />
+      <TextBlock />
+    </DockPanel>
+
+    <!-- 设置（默认收起；调试窗口展开） -->
+    <Border x:Name="SettingsPanel" Style="{StaticResource Card}" Margin="0,8,0,0" Visibility="Collapsed">
+      <StackPanel>
+        <!-- 提示强度 -->
+        <TextBlock Style="{StaticResource Section}" Margin="0,0,0,4" Text="{x:Static res:Strings.Cn_HintStrength}" />
+        <StackPanel x:Name="HintChecks" Orientation="Horizontal" Margin="0,0,0,4">
+          <CheckBox x:Name="HintsCheck" Content="{x:Static res:Strings.Main_MoveHints}" Checked="HintsCheck_Changed" Unchecked="HintsCheck_Changed" />
+          <CheckBox x:Name="HintsOnlyCheck" Content="{x:Static res:Strings.Main_HintsOnly}" Margin="12,0,12,0" Checked="HintsOnlyCheck_Changed" Unchecked="HintsOnlyCheck_Changed" ToolTip="{x:Static res:Strings.Main_HintsOnly_Tip}" />
+        </StackPanel>
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Left" Text="{x:Static res:Strings.Main_Faster}" Foreground="#9AA0AC" Margin="0,0,6,0" />
+          <TextBlock DockPanel.Dock="Right" Text="{x:Static res:Strings.Main_Stronger}" Foreground="#9AA0AC" Margin="6,0,0,0" />
+          <Slider x:Name="HintSlider" Minimum="0" Maximum="6" IsSnapToTickEnabled="True" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="HintSlider_ValueChanged" ToolTip="{x:Static res:Strings.Main_HintQuality_Tip}" />
+        </DockPanel>
+        <TextBlock x:Name="HintLevelText" Style="{StaticResource Dim}" Margin="0,4,0,0" Text="—" />
+
+        <!-- 统计 -->
+        <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Stats_Title}" />
+        <DockPanel>
+          <Button x:Name="ResetStatsButton" DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center" Content="{x:Static res:Strings.Stats_Reset}" ToolTip="{x:Static res:Strings.Stats_Reset_Tip}" Click="ResetStatsButton_Click" />
+          <TextBlock x:Name="StatsText" TextWrapping="Wrap" Text="—" />
+        </DockPanel>
+
+        <!-- 游戏窗口 -->
+        <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Main_GameWindow}" />
+        <DockPanel>
+          <Button x:Name="RefreshButton" DockPanel.Dock="Right" Margin="6,0,0,0" Content="⟳" ToolTip="{x:Static res:Strings.Main_RefreshWindows_Tip}" Click="RefreshButton_Click" />
+          <ComboBox x:Name="WindowCombo" />
+        </DockPanel>
+        <CheckBox x:Name="AutoAttachCheck" Margin="0,6,0,0" HorizontalAlignment="Left" Content="{x:Static res:Strings.Main_AutoAttach}" IsChecked="True" />
+
+        <!-- 识别 -->
+        <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Main_Recognition}" />
+        <StackPanel Orientation="Horizontal">
+          <Button x:Name="ScanButton" Content="{x:Static res:Strings.Main_Scan}" Click="ScanButton_Click" />
+          <CheckBox x:Name="AutoScanCheck" Content="{x:Static res:Strings.Main_Auto}" Margin="0,0,4,0" Checked="AutoScanCheck_Changed" Unchecked="AutoScanCheck_Changed" />
+          <Slider x:Name="IntervalSlider" Width="110" Minimum="0" Maximum="1" SmallChange="0.1" LargeChange="0.1" IsSnapToTickEnabled="True" TickFrequency="0.1" TickPlacement="BottomRight"
+                  ValueChanged="IntervalSlider_ValueChanged" ToolTip="{x:Static res:Strings.Main_ScanInterval_Tip}" />
+          <TextBlock x:Name="IntervalText" Margin="6,0,0,0" Text="0.5 s" />
+        </StackPanel>
+        <TextBlock x:Name="ScanStatus" Style="{StaticResource Dim}" Margin="0,4,0,0" Text="—" />
+        <StackPanel Orientation="Horizontal" Margin="0,6,0,0" ToolTip="{x:Static res:Strings.Main_GameLanguage_Tip}">
+          <TextBlock Text="{x:Static res:Strings.Main_GameLanguage}" Margin="0,0,6,0" />
+          <ComboBox x:Name="GameLanguageCombo" Width="230" />
+        </StackPanel>
+
+        <!-- 浮层 -->
+        <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Main_Overlay}" />
+        <StackPanel Orientation="Horizontal" ToolTip="{x:Static res:Strings.Cn_OverlayFont_Tip}">
+          <TextBlock Text="{x:Static res:Strings.Cn_OverlayFont}" Margin="0,0,6,0" />
+          <Slider x:Name="FontScaleSlider" Width="160" Minimum="0.8" Maximum="1.6" SmallChange="0.1" LargeChange="0.1" IsSnapToTickEnabled="True" TickFrequency="0.1" TickPlacement="BottomRight"
+                  ValueChanged="FontScaleSlider_ValueChanged" />
+          <TextBlock x:Name="FontScaleText" Margin="6,0,0,0" Text="100%" />
+        </StackPanel>
+
+        <!-- 游戏日志 -->
+        <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Main_GameLog}" />
+        <StackPanel Orientation="Horizontal">
+          <Button x:Name="PickLogButton" Content="{x:Static res:Strings.Main_Choose}" ToolTip="{x:Static res:Strings.Main_ChooseLog_Tip}" Click="PickLogButton_Click" />
+          <Button x:Name="AutoLogButton" Content="{x:Static res:Strings.Main_Auto}" ToolTip="{x:Static res:Strings.Main_FindLog_Tip}" Click="AutoLogButton_Click" />
+        </StackPanel>
+        <TextBlock x:Name="LogStatus" Style="{StaticResource Dim}" Margin="0,2,0,0" Text="—" />
+
+        <!-- 其他：界面语言、更新、版本 -->
+        <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Cn_Other}" />
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="{x:Static res:Strings.Main_InterfaceLanguage}" Margin="0,0,6,0" ToolTip="{x:Static res:Strings.Main_InterfaceLanguage_Tip}" />
+          <ComboBox x:Name="UiLanguageCombo" Width="130" />
+        </StackPanel>
+        <StackPanel x:Name="UpdatePanel" Margin="0,8,0,0">
+          <CheckBox x:Name="UpdateCheck" HorizontalAlignment="Left" Content="{x:Static res:Strings.Main_CheckUpdates}" ToolTip="{x:Static res:Strings.Main_CheckUpdates_Tip}" Checked="UpdateCheck_Changed" Unchecked="UpdateCheck_Changed" />
+          <TextBlock x:Name="UpdateStatus" Style="{StaticResource Dim}" Margin="0,2,0,0" />
+        </StackPanel>
+        <TextBlock x:Name="HintStatus" Style="{StaticResource Dim}" Margin="0,6,0,0" Text="—" />
+        <TextBlock x:Name="VersionText" Foreground="#6F7580" TextWrapping="Wrap" Margin="0,4,0,0" Text="{x:Static res:Strings.Main_Version}" />
+      </StackPanel>
+    </Border>
+
+    <!-- 调试（加 debug 参数启动才显示） -->
+    <StackPanel x:Name="ViewPanel" Orientation="Horizontal" Margin="0,8,0,0">
       <CheckBox x:Name="OverlayCheck" Content="{x:Static res:Strings.Main_Overlay}" Checked="OverlayCheck_Changed" Unchecked="OverlayCheck_Changed" />
       <CheckBox x:Name="BoxesCheck" Content="{x:Static res:Strings.Main_InteractableRegions}" ToolTip="{x:Static res:Strings.Main_InteractableRegions_Tip}" Checked="BoxesCheck_Changed" Unchecked="BoxesCheck_Changed" />
       <CheckBox x:Name="TextCheck" Content="{x:Static res:Strings.Main_Text}" ToolTip="{x:Static res:Strings.Main_Text_Tip}" Checked="TextCheck_Changed" Unchecked="TextCheck_Changed" />
     </StackPanel>
-    <TextBlock x:Name="ScanStatus" Margin="0,4,0,0" Foreground="#9AA0AC" TextWrapping="Wrap" Text="—" />
-
-    <!-- Move hints -->
-    <StackPanel>
-      <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Main_Hints}" />
-      <StackPanel x:Name="HintChecks" Orientation="Horizontal">
-        <CheckBox x:Name="HintsCheck" Content="{x:Static res:Strings.Main_MoveHints}" Checked="HintsCheck_Changed" Unchecked="HintsCheck_Changed" />
-        <CheckBox x:Name="HintsOnlyCheck" Content="{x:Static res:Strings.Main_HintsOnly}" Margin="12,0,12,0" Checked="HintsOnlyCheck_Changed" Unchecked="HintsOnlyCheck_Changed" ToolTip="{x:Static res:Strings.Main_HintsOnly_Tip}" />
-      </StackPanel>
-      <DockPanel Margin="0,6,0,0">
-        <TextBlock DockPanel.Dock="Left" Text="{x:Static res:Strings.Main_Faster}" Foreground="#9AA0AC" Margin="0,0,6,0" />
-        <TextBlock DockPanel.Dock="Right" Text="{x:Static res:Strings.Main_Stronger}" Foreground="#9AA0AC" Margin="6,0,0,0" />
-        <Slider x:Name="HintSlider" Minimum="0" Maximum="6" IsSnapToTickEnabled="True" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="HintSlider_ValueChanged" ToolTip="{x:Static res:Strings.Main_HintQuality_Tip}" />
-      </DockPanel>
-      <TextBlock x:Name="HintLevelText" Margin="0,2,0,0" TextWrapping="Wrap" Text="—" />
-      <TextBlock x:Name="HintStatus" Margin="0,2,0,0" Foreground="#9AA0AC" TextWrapping="Wrap" Text="—" />
-    </StackPanel>
-
-    <!-- The game's log -->
-    <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Main_GameLog}" />
-    <StackPanel Orientation="Horizontal">
-      <Button x:Name="PickLogButton" Content="{x:Static res:Strings.Main_Choose}" ToolTip="{x:Static res:Strings.Main_ChooseLog_Tip}" Click="PickLogButton_Click" />
-      <Button x:Name="AutoLogButton" Content="{x:Static res:Strings.Main_Auto}" ToolTip="{x:Static res:Strings.Main_FindLog_Tip}" Click="AutoLogButton_Click" />
-    </StackPanel>
-    <TextBlock x:Name="LogStatus" Margin="0,2,0,0" Foreground="#9AA0AC" TextWrapping="Wrap" Text="—" />
-
-    <!-- Statistics -->
-    <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Stats_Title}" />
-    <DockPanel>
-      <Button x:Name="ResetStatsButton" DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center" Content="{x:Static res:Strings.Stats_Reset}" ToolTip="{x:Static res:Strings.Stats_Reset_Tip}" Click="ResetStatsButton_Click" />
-      <TextBlock x:Name="StatsText" TextWrapping="Wrap" Text="—" />
-    </DockPanel>
-
-    <!-- Debugging (the command line's debug flag): labels, dataset, what was read, the log -->
     <StackPanel x:Name="DebugPanel">
       <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Main_LabelsAndDataset}" />
       <StackPanel Orientation="Horizontal">
@@ -132,8 +188,6 @@
       <TextBlock x:Name="DatasetStatus" Margin="0,4,0,0" Foreground="#9AA0AC" TextWrapping="Wrap" />
       <TextBlock Margin="0,4,0,0" Foreground="#6F7580" TextWrapping="Wrap"
                  Text="{x:Static res:Strings.Main_EditMode_Tip}" />
-
-      <!-- Sandbox summary and log -->
       <TextBlock Style="{StaticResource Section}" Text="{x:Static res:Strings.Name_Sandbox}" />
       <TextBox x:Name="SandboxSummary" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"
                Background="#15161A" Foreground="#D8D8DC" BorderThickness="0" MinHeight="48" />
@@ -147,17 +201,5 @@
         </ListBox.ItemTemplate>
       </ListBox>
     </StackPanel>
-    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-      <TextBlock Text="{x:Static res:Strings.Main_InterfaceLanguage}" Margin="0,0,6,0" ToolTip="{x:Static res:Strings.Main_InterfaceLanguage_Tip}" />
-      <ComboBox x:Name="UiLanguageCombo" Width="130" />
-    </StackPanel>
-    <DockPanel x:Name="UpdatePanel" Margin="0,8,0,0">
-      <Button x:Name="UpdateButton" DockPanel.Dock="Right" Margin="6,0,0,0" Visibility="Collapsed" Click="UpdateButton_Click" />
-      <CheckBox x:Name="UpdateCheck" Content="{x:Static res:Strings.Main_CheckUpdates}" ToolTip="{x:Static res:Strings.Main_CheckUpdates_Tip}" Checked="UpdateCheck_Changed" Unchecked="UpdateCheck_Changed" />
-    </DockPanel>
-    <DockPanel Margin="0,8,0,0">
-      <Button x:Name="ReportButton" DockPanel.Dock="Right" Margin="6,0,0,0" Content="{x:Static res:Strings.Main_ReportBug}" ToolTip="{x:Static res:Strings.Main_ReportBug_Tip}" Click="ReportButton_Click" />
-      <TextBlock x:Name="VersionText" Foreground="#6F7580" TextWrapping="Wrap" Text="{x:Static res:Strings.Main_Version}" />
-    </DockPanel>
   </StackPanel>
 </Window>

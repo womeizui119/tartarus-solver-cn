@@ -59,11 +59,13 @@ public partial class ControlWindow
                         _update = latest;
                         Log($"Update: version {latest.Version} is out ({latest.Page})");
                         ShowUpdate(latest);
+                        UpdateStatus.Text = Loc.F(Strings.Cn_UpdateNew, latest.Version);
                     }
                     else if (latest != null && latest.Version <= Updates.Current && !latestSaid)
                     {
                         // Once a start: the check ran and found nothing newer.
                         latestSaid = true;
+                        UpdateStatus.Text = Loc.F(Strings.Cn_UpdateLatest, AppVersion.Number);
                         Log($"Update check: {AppVersion.Number} is the latest version (GitHub's latest is {latest.Version})");
                     }
                 }
@@ -71,6 +73,7 @@ public partial class ControlWindow
                 {
                     // Offline, or GitHub not answering: said once, asked again later.
                     if (!failed) Log("Update check failed: " + ex.Message);
+                    UpdateStatus.Text = Loc.F(Strings.Cn_UpdateCheckFailed, ex.Message);
                     failed = true;
                 }
                 await Task.Delay(UpdateEvery, ct);

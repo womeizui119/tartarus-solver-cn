@@ -7,7 +7,8 @@ namespace Tartarus.App;
 public sealed class AppSettings
 {
     /// <summary>Regex for the target window's title; the game by default.</summary>
-    public string WindowTitle { get; set; } = @"^Torchlight: Infinite\s*$";
+    // 中文版：国服客户端的窗口标题可能是中文。
+    public string WindowTitle { get; set; } = @"^(Torchlight: Infinite|火炬之光[:：]?\s*无限)\s*$";
     public string DatasetDir { get; set; } = DefaultDatasetDir();
     public bool AutoScan { get; set; } = true;
     /// <summary>From one frame to the next, 0 .. 1 s; 0: the next as soon as the last one's reading and hint are done.</summary>
@@ -48,9 +49,10 @@ public sealed class AppSettings
     /// The language the player chose for the game (en, ru, de, ..., zhCN), in the language window or the list; empty: none
     /// yet, asked as the app connects to the game. Read only with <see cref="DetectGameLanguage"/> off.
     /// </summary>
-    public string? GameLanguage { get; set; }
+    public string? GameLanguage { get; set; } = "zh";
     /// <summary>The game language list's "Automatic": the language from the game's GameUserSettings.ini, not <see cref="GameLanguage"/>.</summary>
-    public bool DetectGameLanguage { get; set; } = true;
+    // 中文版：默认简体中文、不自动检测（国服客户端的设置文件可能写着 "en"）。
+    public bool DetectGameLanguage { get; set; }
     /// <summary>The game's UE_game.log; null: looked for under the usual Steam libraries.</summary>
     public string? GameLogPath { get; set; }
     /// <summary>
@@ -77,7 +79,9 @@ public sealed class AppSettings
     /// The language the app's own window and overlay are drawn in: "auto" (this Windows' language), or one of the
     /// game's languages. Not the game's language (<see cref="GameLanguage"/>): that one is what the game's text is read in.
     /// </summary>
-    public string UiLanguage { get; set; } = "auto";
+    public string UiLanguage { get; set; } = "zh";
+    /// <summary>中文版：浮层文字大小，0.8 到 1.6 倍。</summary>
+    public double OverlayFontScale { get; set; } = 1.0;
     /// <summary>A random id of this install: tells one tester's reports from another's, and nothing else about them.</summary>
     public string InstallId { get; set; } = Guid.NewGuid().ToString("N")[..12];
     /// <summary>Ask GitHub for a new version (the player's window; never with --debug).</summary>
@@ -123,6 +127,9 @@ public sealed class AppSettings
         }
         // A language set meant detection off, before detection had a setting of its own.
         if (SettingsVersion < 3) DetectGameLanguage = string.IsNullOrEmpty(GameLanguage);
+        // 中文版：原版的默认窗口标题换成也认中文标题的；还没选过游戏语言的设为简体中文。
+        if (WindowTitle == @"^Torchlight: Infinite\s*$") WindowTitle = defaults.WindowTitle;
+        if (string.IsNullOrEmpty(GameLanguage)) (GameLanguage, DetectGameLanguage) = ("zh", false);
         foreach (var (action, gesture) in defaults.Hotkeys) Hotkeys.TryAdd(action, gesture);
         SettingsVersion = CurrentVersion;
     }

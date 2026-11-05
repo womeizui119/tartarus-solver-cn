@@ -61,6 +61,9 @@ public sealed partial class SandboxOverlayView : FrameworkElement
     private static readonly Brush ButtonBrush = Freeze(new SolidColorBrush(Color.FromRgb(120, 200, 255)));
     private static readonly Pen ButtonPen = FreezePen(new Pen(ButtonBrush, 1.5));
     private static readonly Pen EmptySlotPen = FreezePen(new Pen(Freeze(new SolidColorBrush(Color.FromArgb(150, 200, 200, 210))), 1) { DashStyle = DashStyles.Dash });
+    /// <summary>中文版：浮层文字的缩放（设置里的 OverlayFontScale）。</summary>
+    public static double FontScale { get; set; } = 1.0;
+
     private static readonly Typeface Face = new(Loc.Font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
 
     private static readonly Brush[] RarityBrushes =
@@ -105,6 +108,7 @@ public sealed partial class SandboxOverlayView : FrameworkElement
     {
         if (m is not { HintsOnly: true, EditMode: false }) return null;
         var key = new System.Text.StringBuilder();
+        key.Append(FontScale.ToString("0.##", CultureInfo.InvariantCulture)).Append('|');
         key.Append(m.FrameWidth).Append('x').Append(m.FrameHeight).Append('|').Append(m.Status).Append('|').Append(m.Warning).Append('|').Append(m.LanguageAsk)
             .Append('|').Append(m.EyeHint).Append('|').Append(m.HintLine).Append('|').Append(m.Sandbox != null);
         var scan = m.Scan;
@@ -383,6 +387,7 @@ public sealed partial class SandboxOverlayView : FrameworkElement
     /// <summary>A pill with an icon left of the text; returns its height.</summary>
     private static double IconPill(DrawingContext dc, string text, ImageSource? icon, Point at, Brush fg, double size, double ppd, bool centerX = false, bool above = false)
     {
+        size *= FontScale;
         var ft = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Face, size, fg, ppd);
         double side = Math.Max(ft.Height, 2.4 * size), h = side + 4, w = side + ft.Width + 14;
         at = new Point(centerX ? at.X - w / 2 : at.X, above ? at.Y - h : at.Y);
@@ -420,6 +425,7 @@ public sealed partial class SandboxOverlayView : FrameworkElement
 
     private static void Pill(DrawingContext dc, string text, Point at, Brush fg, double size, double ppd, bool centerX = false, bool above = false)
     {
+        size *= FontScale;
         var ft = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Face, size, fg, ppd);
         double w = ft.Width + 8, h = ft.Height + 2;
         double x = centerX ? at.X - w / 2 : at.X, y = above ? at.Y - h : at.Y;
@@ -429,6 +435,7 @@ public sealed partial class SandboxOverlayView : FrameworkElement
 
     private static void Badge(DrawingContext dc, string text, Point center, Brush bg, double size, double ppd)
     {
+        size *= FontScale;
         var ft = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Face, size, Brushes.Black, ppd);
         double w = Math.Max(ft.Width + 8, ft.Height + 2), h = ft.Height + 2;
         dc.DrawRoundedRectangle(bg, null, new Rect(center.X - w / 2, center.Y - h / 2, w, h), h / 2, h / 2);

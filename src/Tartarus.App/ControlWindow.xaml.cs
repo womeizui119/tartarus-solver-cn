@@ -98,14 +98,24 @@ public partial class ControlWindow : Window
         SaveButton.Content = Strings.Main_SaveFrame + Hk("save");
         AutoScanCheck.Content = Strings.Main_Auto + Hk("auto") + Strings.Main_Every;
         ReportButton.Content = Strings.Main_ReportBug + Hk("report");
-        Title = $"Tartarus Solver {AppVersion.Number}" + (settings.Debug ? Strings.Main_Debug : "");
+        Title = $"{Strings.Cn_AppName} {AppVersion.Number}" + (settings.Debug ? Strings.Main_Debug : "");
         // The player's window: the game window, scanning, the hints' quality, the game's log, the version
         // and bug reports.
         if (!settings.Debug)
             foreach (var panel in new FrameworkElement[] { ViewPanel, HintsCheck, HintsOnlyCheck, DebugPanel }) panel.Visibility = Visibility.Collapsed;
-        VersionText.Text = Strings.Main_Version + " " + AppVersion.Short;
+        VersionText.Text = Strings.Main_Version + " " + AppVersion.Short + Strings.Cn_Edition;
         VersionText.ToolTip = AppVersion.Full;
         Log("Version " + AppVersion.Short + (BugReports.Enabled ? "" : " · bug reports not set up"));
+        // 中文版：设置默认收起（调试窗口展开）；状态灯和当前推荐跟着连接状态变。
+        ShowSettings(settings.Debug);
+        System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock))
+            .AddValueChanged(CaptureStatus, (_, _) => { UpdateStatusDot(); UpdateRecommendation(_stale); });
+        UpdateStatusDot();
+        settings.OverlayFontScale = Math.Clamp(Math.Round(settings.OverlayFontScale, 1), 0.8, 1.6);
+        SandboxOverlayView.FontScale = settings.OverlayFontScale;
+        FontScaleSlider.Value = settings.OverlayFontScale;
+        FontScaleText.Text = $"{settings.OverlayFontScale * 100:0}%";
+        _fontScaleReady = true;
 
         settings.AutoScanSeconds = Math.Clamp(Math.Round(settings.AutoScanSeconds, 1), 0, 1);
         IntervalSlider.Value = settings.AutoScanSeconds;
@@ -121,7 +131,7 @@ public partial class ControlWindow : Window
             string name = Tartarus.Vision.Ocr.OcrPacks.LanguageName(code), native = Tartarus.Vision.Ocr.OcrPacks.NativeName(code);
             GameLanguageCombo.Items.Add(new ComboBoxItem { Content = name == native ? name : $"{name} · {native}", Tag = code });
         }
-        ShowGameLanguage(ManualLanguage ?? "en");
+        ShowGameLanguage(ManualLanguage ?? "zh");
         GameLanguageCombo.SelectionChanged += GameLanguageCombo_SelectionChanged;
         // The interface's own language, each by its own name; automatic is Windows's. The XAML's words are swapped when a
         // window is built, so a change takes a restart.
@@ -747,6 +757,7 @@ public partial class ControlWindow : Window
     private void RefreshOverlay()
     {
         bool stale = _stale;
+        UpdateRecommendation(stale);
         _overlay.View.Model = new OverlayModel
         {
             FrameWidth = _frame?.Width ?? 0,
@@ -1660,6 +1671,78 @@ public partial class ControlWindow : Window
         if (_settings == null) return;
         _settings.AutoScanSeconds = Math.Round(IntervalSlider.Value, 1);
         ShowInterval();
+    }
+
+    // ===== 中文版：当前推荐、设置展开收起、状态灯、浮层字号 =====
+
+    /// <summary>主窗口最上面的“当前推荐”：用文字写出该怎么选、怎么走，和浮层上的绿框是同一个结果。</summary>
+    private void UpdateRecommendation(bool stale)
+    {
+        string main, detail;
+        string? chests = null;
+        var hint = stale || !_settings.Hints ? null : _hint;
+        if (hint is { Ranked: { Count: > 0 } ranked })
+        {
+            var best = ranked[0];
+            main = SandboxOverlayView.RankedNameLoc(hint, best);
+            var ties = ranked.Skip(1).Where(a => best.Mean - a.Mean < Hint.TieWithin).ToList();
+            var next = ranked.Skip(1 + ties.Count).FirstOrDefault();
+            detail = ties.Count > 0 ? Loc.F(Strings.Cn_Tied, string.Join(" / ", ties.Select(t => SandboxOverlayView.RankedNameLoc(hint, t))))
+                : next != null ? Loc.F(Strings.Cn_Next, SandboxOverlayView.RankedNameLoc(hint, next)) : Strings.Cn_Only;
+            if (best.Action.Kind is Tartarus.Rules.ActionKind.Consume or Tartarus.Rules.ActionKind.Hunt && !hint.ConsumeOnly && !hint.HuntOnly)
+                detail = Loc.F(Strings.Cn_TwoClicks, detail);
+            chests = Loc.F(Strings.Cn_Chests, best.Chromatic.ToString("0.0", CultureInfo.InvariantCulture), best.Ultimate.ToString("0.0", CultureInfo.InvariantCulture));
+            // 写出这次按剩余几天算的，方便和游戏里的天数对照；没有游戏日志时天数只靠画面识别。
+            var state = hint.State;
+            if (state.MaxDays > 0)
+                chests += "\n" + Loc.F(Strings.Cn_Days, state.RemainingDays, state.MaxDays) + (_gameLogPath == null ? Strings.Cn_NoLog : "");
+        }
+        else if (_capture == null) (main, detail) = (Strings.Cn_None, Strings.Cn_NotConnected);
+        else if (stale) (main, detail) = (Strings.Cn_Rereading, Strings.Cn_RereadingDetail);
+        else if (_eyeHint) (main, detail) = (Strings.Cn_Eye, Strings.Cn_EyeDetail);
+        else if (_settings.Hints && (_scan?.Ok == true || _scan?.Pick != null)) (main, detail) = (Strings.Cn_Computing, Strings.Cn_ComputingDetail);
+        else (main, detail) = (Strings.Cn_None, Strings.Cn_NoneDetail);
+        RecommendText.Text = main;
+        RecommendText.Foreground = hint != null ? RecommendOn : RecommendOff;
+        RecommendDetail.Text = detail;
+        RecommendChests.Text = chests ?? "";
+        RecommendChests.Visibility = chests != null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static readonly System.Windows.Media.Brush RecommendOn = MakeBrush(0x5B, 0xE3, 0x8F), RecommendOff = MakeBrush(0x9A, 0xA0, 0xAC);
+    private static readonly System.Windows.Media.Brush DotOn = MakeBrush(0x4C, 0xC3, 0x8A), DotWait = MakeBrush(0xE6, 0xB4, 0x6E), DotOff = MakeBrush(0x6F, 0x75, 0x80);
+
+    private static System.Windows.Media.Brush MakeBrush(byte r, byte g, byte b)
+    {
+        var brush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    private void SettingsButton_Click(object sender, RoutedEventArgs e) => ShowSettings(SettingsPanel.Visibility != Visibility.Visible);
+
+    private void ShowSettings(bool show)
+    {
+        SettingsPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        SettingsButton.Content = show ? Strings.Cn_SettingsOpen : Strings.Cn_Settings;
+    }
+
+    /// <summary>绿：正在捕获；黄：在等游戏或出了问题；灰：没开。</summary>
+    private void UpdateStatusDot() =>
+        StatusDot.Fill = _capture != null ? DotOn : CaptureStatus.Text == Strings.Status_NotCapturing ? DotOff : DotWait;
+
+    private bool _fontScaleReady;
+
+    private void FontScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_fontScaleReady) return;
+        double scale = Math.Round(FontScaleSlider.Value, 1);
+        FontScaleText.Text = $"{scale * 100:0}%";
+        if (scale == _settings.OverlayFontScale) return;
+        _settings.OverlayFontScale = scale;
+        _settings.Save();
+        SandboxOverlayView.FontScale = scale;
+        RefreshOverlay();
     }
 
     private void ShowInterval() =>

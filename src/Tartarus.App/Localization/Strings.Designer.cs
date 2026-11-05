@@ -274,4 +274,34 @@ public static class Strings
     public static string Update_Installing => Get(nameof(Update_Installing));
     public static string Update_OpenPage_Tip => Get(nameof(Update_OpenPage_Tip));
     public static string Update_To => Get(nameof(Update_To));
+    // 中文版新增
+    public static string Cn_AppName => Get(nameof(Cn_AppName));
+    public static string Cn_Edition => Get(nameof(Cn_Edition));
+    public static string Cn_Recommend => Get(nameof(Cn_Recommend));
+    public static string Cn_None => Get(nameof(Cn_None));
+    public static string Cn_NoneDetail => Get(nameof(Cn_NoneDetail));
+    public static string Cn_NotConnected => Get(nameof(Cn_NotConnected));
+    public static string Cn_Rereading => Get(nameof(Cn_Rereading));
+    public static string Cn_RereadingDetail => Get(nameof(Cn_RereadingDetail));
+    public static string Cn_Eye => Get(nameof(Cn_Eye));
+    public static string Cn_EyeDetail => Get(nameof(Cn_EyeDetail));
+    public static string Cn_Computing => Get(nameof(Cn_Computing));
+    public static string Cn_ComputingDetail => Get(nameof(Cn_ComputingDetail));
+    public static string Cn_Tied => Get(nameof(Cn_Tied));
+    public static string Cn_Next => Get(nameof(Cn_Next));
+    public static string Cn_Only => Get(nameof(Cn_Only));
+    public static string Cn_TwoClicks => Get(nameof(Cn_TwoClicks));
+    public static string Cn_Chests => Get(nameof(Cn_Chests));
+    public static string Cn_Days => Get(nameof(Cn_Days));
+    public static string Cn_NoLog => Get(nameof(Cn_NoLog));
+    public static string Cn_Settings => Get(nameof(Cn_Settings));
+    public static string Cn_SettingsOpen => Get(nameof(Cn_SettingsOpen));
+    public static string Cn_HintStrength => Get(nameof(Cn_HintStrength));
+    public static string Cn_OverlayFont => Get(nameof(Cn_OverlayFont));
+    public static string Cn_OverlayFont_Tip => Get(nameof(Cn_OverlayFont_Tip));
+    public static string Cn_Other => Get(nameof(Cn_Other));
+    public static string Cn_UpdateLatest => Get(nameof(Cn_UpdateLatest));
+    public static string Cn_UpdateNew => Get(nameof(Cn_UpdateNew));
+    public static string Cn_UpdateCheckFailed => Get(nameof(Cn_UpdateCheckFailed));
+    public static string Cn_ReportSaved => Get(nameof(Cn_ReportSaved));
 }

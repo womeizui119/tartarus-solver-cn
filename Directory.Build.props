@@ -2,17 +2,21 @@
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
     <!-- The app's version (shown in its window and sent with bug reports): bump it for every build given to testers. -->
-    <Version>0.7.44</Version>
+    <!-- 中文版：原版版本号后加一段中文版修订号（0.7.44.1 = 基于原版 0.7.44 的中文版第 1 版）。 -->
+    <Version>0.7.44.1</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <Platforms>x64</Platforms>
-    <PlatformTarget>x64</PlatformTarget>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <!-- Windows SDK projection version for WinRT APIs (Windows.Graphics.Capture). -->
     <WinTfm>net9.0-windows10.0.22621.0</WinTfm>
     <!-- PaddleOCR ONNX models, fetched by Tartarus.Vision on first build. -->
     <OcrModelDir>$(MSBuildThisFileDirectory)models\ocr\</OcrModelDir>
+  </PropertyGroup>
+  <!-- Windows x64 for the PC app; the Android build (android/, TartarusAndroid=true) leaves the platform to its own project. -->
+  <PropertyGroup Condition="'$(TartarusAndroid)' != 'true'">
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 </Project>

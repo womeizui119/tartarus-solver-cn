@@ -18,6 +18,12 @@ internal static class AppFiles
     {
         get
         {
+            // 安卓版：模型解压在 App 自己的数据目录，由 TARTARUS_HOME 指过来（电脑版不设，照旧）。
+            if (Environment.GetEnvironmentVariable("TARTARUS_HOME") is { Length: > 0 } home)
+            {
+                yield return home;
+                yield break;
+            }
             for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
             {
                 yield return dir.FullName;

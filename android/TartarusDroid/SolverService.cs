@@ -1,0 +1,235 @@
+using Android.App;
+using Android.Content;
+using Android.Content.PM;
+using Android.Graphics;
+using Android.Hardware.Display;
+using Android.Media;
+using Android.Media.Projection;
+using Android.OS;
+using Android.Util;
+using Android.Views;
+using Tartarus.Vision;
+
+namespace TartarusDroid;
+
+/// <summary>
+/// 前台服务：拿到录屏授权后，每隔一会儿取一帧游戏画面，交给 <see cref="Pipeline"/> 识别和推算，结果写到浮窗上。
+/// </summary>
+[Service(Exported = false, ForegroundServiceType = ForegroundService.TypeMediaProjection)]
+public sealed class SolverService : Service
+{
+    public const string ExtraCode = "code", ExtraData = "data";
+    private const int NotificationId = 1;
+    private const string Channel = "solver";
+
+    public static SolverService? Running { get; private set; }
+
+    private MediaProjection? _projection;
+    private VirtualDisplay? _display;
+    private ImageReader? _reader;
+    private int _w, _h;
+    private Overlay? _overlay;
+    private Pipeline? _pipeline;
+    private Thread? _worker;
+    private volatile bool _stop;
+    private Frame? _lastFrame;
+    private DateTime _lastAutoSave;
+    private readonly Handler _ui = new(Looper.MainLooper!);
+
+    public bool AutoSave { get; set; }
+
+    public override IBinder? OnBind(Intent? intent) => null;
+
+    public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
+    {
+        if (_projection != null || intent == null) return StartCommandResult.NotSticky;
+        Running = this;
+        StartForegroundNow();
+        int code = intent.GetIntExtra(ExtraCode, 0);
+        var data = (Intent?)intent.GetParcelableExtra(ExtraData);
+        var mpm = (MediaProjectionManager)GetSystemService(MediaProjectionService)!;
+        _projection = data != null ? mpm.GetMediaProjection(code, data) : null;
+        if (_projection == null)
+        {
+            StopSelf();
+            return StartCommandResult.NotSticky;
+        }
+        _projection.RegisterCallback(new ProjectionStopped(this), _ui);
+
+        _overlay = new Overlay(this);
+        _overlay.Show(new Shown("准备中…", "第一次打开要解压识别模型，约十几秒", null, false, "准备中…"));
+        _overlay.SaveClicked += () => Save(manual: true);
+        _overlay.AutoSaveChanged += on => AutoSave = on;
+        _overlay.StopClicked += StopAll;
+
+        CreateDisplay();
+        _worker = new Thread(Work) { IsBackground = true, Name = "solver" };
+        _worker.Start();
+        return StartCommandResult.NotSticky;
+    }
+
+    private void StartForegroundNow()
+    {
+        var nm = (NotificationManager)GetSystemService(NotificationService)!;
+        nm.CreateNotificationChannel(new NotificationChannel(Channel, "求解器运行中", NotificationImportance.Low));
+        var open = PendingIntent.GetActivity(this, 0, new Intent(this, typeof(MainActivity)), PendingIntentFlags.Immutable);
+        var n = new Notification.Builder(this, Channel)
+            .SetContentTitle("塔罗斯求解器正在看游戏画面")
+            .SetContentText("点浮窗上的 ■ 停止")
+            .SetSmallIcon(Android.Resource.Drawable.IcMenuView)
+            .SetContentIntent(open)
+            .SetOngoing(true)
+            .Build()!;
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+            StartForeground(NotificationId, n, ForegroundService.TypeMediaProjection);
+        else
+            StartForeground(NotificationId, n);
+    }
+
+    /// <summary>屏幕现在的大小（横竖屏会变）；长边最多 2400，太大只会更慢。</summary>
+    private (int W, int H, int Dpi) ScreenSize()
+    {
+        var wm = Android.Runtime.Extensions.JavaCast<IWindowManager>(GetSystemService(WindowService))!;
+        var m = new DisplayMetrics();
+        wm.DefaultDisplay!.GetRealMetrics(m);
+        int w = m.WidthPixels, h = m.HeightPixels;
+        double k = Math.Min(1.0, 2400.0 / Math.Max(w, h));
+        return ((int)(w * k) & ~1, (int)(h * k) & ~1, (int)m.DensityDpi);
+    }
+
+    private void CreateDisplay()
+    {
+        var (w, h, dpi) = ScreenSize();
+        (_w, _h) = (w, h);
+        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1 /* RGBA_8888 */, 2);
+        _display = _projection!.CreateVirtualDisplay("tartarus", w, h, dpi, DisplayFlags.Presentation, _reader.Surface, null, null);
+    }
+
+    /// <summary>转屏后跟着改大小（同一个授权只能建一次虚拟屏幕，所以改大小而不是重建）。</summary>
+    private void FollowRotation()
+    {
+        var (w, h, dpi) = ScreenSize();
+        if (w == _w && h == _h) return;
+        var old = _reader;
+        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1, 2);
+        _display!.Resize(w, h, dpi);
+        _display.Surface = _reader.Surface;
+        (_w, _h) = (w, h);
+        old?.Close();
+    }
+
+    private void Work()
+    {
+        try
+        {
+            ModelSetup.Prepare(this);
+            Post(new Shown("准备中…", "正在加载识别和推算模型…", null, false, "准备中…"));
+            _pipeline = new Pipeline();
+            _pipeline.Changed += Post;
+            Post(new Shown("暂无", "进入塔罗斯监狱后，这里会写出该怎么走", null, false, "就绪"));
+        }
+        catch (Exception ex)
+        {
+            Post(new Shown("启动失败", ex.Message, null, false, "启动失败"));
+            Log.Error("tartarus", ex.ToString());
+            return;
+        }
+        while (!_stop)
+        {
+            var started = DateTime.Now;
+            try
+            {
+                FollowRotation();
+                var frame = Grab();
+                if (frame != null)
+                {
+                    _lastFrame = frame;
+                    if (frame.Width < frame.Height) Post(new Shown("请横屏", "游戏要横屏玩，求解器才能看清棋盘", null, false, "竖屏"));
+                    else
+                    {
+                        _pipeline.Process(frame);
+                        if (AutoSave && DateTime.Now - _lastAutoSave > TimeSpan.FromSeconds(3)) Save(manual: false);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("tartarus", ex.ToString());
+            }
+            // 大约每 0.7 秒看一次，给游戏留出性能
+            var rest = TimeSpan.FromMilliseconds(700) - (DateTime.Now - started);
+            if (rest > TimeSpan.Zero) Thread.Sleep(rest);
+        }
+    }
+
+    /// <summary>取最新一帧，按行拷出来（每行末尾可能有对齐用的空字节）。</summary>
+    private Frame? Grab()
+    {
+        using var image = _reader?.AcquireLatestImage();
+        if (image == null) return null;
+        var plane = image.GetPlanes()![0];
+        var buffer = plane.Buffer!;
+        int w = image.Width, h = image.Height, rowStride = plane.RowStride, pixelStride = plane.PixelStride;
+        var pixels = new byte[w * h * 4];
+        var row = new byte[rowStride];
+        buffer.Rewind();
+        for (int y = 0; y < h; y++)
+        {
+            int len = Math.Min(rowStride, buffer.Remaining());
+            buffer.Get(row, 0, len);
+            if (pixelStride == 4) Buffer.BlockCopy(row, 0, pixels, y * w * 4, w * 4);
+            else for (int x = 0; x < w; x++) Buffer.BlockCopy(row, x * pixelStride, pixels, (y * w + x) * 4, 4);
+        }
+        return new Frame(w, h, pixels, Tartarus.Vision.PixelFormat.Rgba32);
+    }
+
+    private void Save(bool manual)
+    {
+        var frame = _lastFrame;
+        if (frame == null) return;
+        _lastAutoSave = DateTime.Now;
+        var scan = _pipeline?.LastScan;
+        string note = scan == null ? "" : $"{(scan.Ok ? "棋盘" : scan.Pick != null ? "选择" : "无")} {scan.Reason} | {(scan.Ok ? SandboxText.Describe(scan) : "")}";
+        string name = Saver.SaveFrame(this, frame, manual, note);
+        if (manual) _ui.Post(() => _overlay?.Toast("已保存：" + name));
+    }
+
+    private void Post(Shown s) => _ui.Post(() => _overlay?.Update(s));
+
+    public void StopAll()
+    {
+        _stop = true;
+        _ui.Post(() =>
+        {
+            _overlay?.Hide();
+            _overlay = null;
+            _display?.Release();
+            _projection?.Stop();
+            _projection = null;
+            StopForeground(StopForegroundFlags.Remove);
+            StopSelf();
+        });
+    }
+
+    public override void OnDestroy()
+    {
+        _stop = true;
+        _overlay?.Hide();
+        _display?.Release();
+        _projection?.Stop();
+        _reader?.Close();
+        Running = null;
+        Task.Run(() =>
+        {
+            _worker?.Join(3000);
+            _pipeline?.Dispose();
+        });
+        base.OnDestroy();
+    }
+
+    private sealed class ProjectionStopped(SolverService service) : MediaProjection.Callback
+    {
+        // 用户在系统里停止了录屏
+        public override void OnStop() => service.StopAll();
+    }
+}

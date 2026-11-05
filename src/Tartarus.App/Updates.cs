@@ -16,7 +16,8 @@ namespace Tartarus.App;
 /// </summary>
 public static class Updates
 {
-    private const string Repo = "glcoder/TartarusSolver";
+    // 中文版：从中文版自己的仓库更新（原版：glcoder/TartarusSolver）。
+    private const string Repo = "womeizui119/tartarus-solver-cn";
 
     public sealed record Release(Version Version, string Page, string Notes, string? Asset, string? Url, long Size, string? Sha256);
 
@@ -62,7 +63,7 @@ public static class Updates
         if (root.GetProperty("tag_name").GetString() is not { } tag || !Version.TryParse(tag.TrimStart('v'), out var version)) return null;
         string page = root.GetProperty("html_url").GetString() ?? $"https://github.com/{Repo}/releases/latest";
         string notes = root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "";
-        string name = $"TartarusSolver-{version}{(SelfContained ? "-full" : "")}.zip";
+        string name = $"TartarusSolver-{version}-zh{(SelfContained ? "-full" : "")}.zip";
         foreach (var a in root.GetProperty("assets").EnumerateArray())
             if (a.GetProperty("name").GetString() == name && a.TryGetProperty("digest", out var d) && d.GetString() is { } digest
                 && digest.StartsWith("sha256:", StringComparison.Ordinal))

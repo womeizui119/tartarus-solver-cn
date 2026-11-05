@@ -97,6 +97,7 @@ public sealed partial class GameLog
     private double _uiScale;
 
     private const string LogInGame = @"UE_game\TorchLight\Saved\Logs\UE_game.log";
+    private const string LogInClient = @"TorchLight\Saved\Logs\UE_game.log";
 
     /// <summary>
     /// The game's log: the one set in settings; else the one beside the running game's executable
@@ -113,8 +114,11 @@ public sealed partial class GameLog
         {
             try
             {
-                var file = new FileInfo(Path.Combine(root, LogInGame));
-                if (file.Exists && !found.Any(f => string.Equals(f.FullName, file.FullName, StringComparison.OrdinalIgnoreCase))) found.Add(file);
+                foreach (var sub in new[] { LogInGame, LogInClient })
+                {
+                    var file = new FileInfo(Path.Combine(root, sub));
+                    if (file.Exists && !found.Any(f => string.Equals(f.FullName, file.FullName, StringComparison.OrdinalIgnoreCase))) found.Add(file);
+                }
             }
             catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException) { }
         }
@@ -128,8 +132,13 @@ public sealed partial class GameLog
         {
             string file = Path.Combine(dir.FullName, LogInGame);
             if (File.Exists(file)) return file;
+            // 中文版：客户端目录里没有 UE_game 这一层时（如部分国服客户端）。
+            file = Path.Combine(dir.FullName, LogInClient);
+            if (File.Exists(file)) return file;
         }
-        return null;
+        // 中文版：日志写在用户目录下的情况。
+        string local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), LogInClient);
+        return File.Exists(local) ? local : null;
     }
 
     /// <summary>Folders the game may be installed in ("...\Torchlight Infinite", holding UE_game).</summary>
@@ -168,6 +177,44 @@ public sealed partial class GameLog
                 foreach (Match m in LauncherPathRx().Matches(text)) yield return m.Groups[1].Value.Replace('/', '\\');
             }
         }
+        // 中文版：国服等非 Steam 安装。各固定盘的根目录、Program Files、Games 下名字带“火炬”或 Torchlight 的文件夹，
+        // 以及常见启动器文件夹（TapTap、XD、心动）里的这类文件夹，再往下一层。只列目录名，不深搜。
+        foreach (var root in ChinaInstallRoots()) yield return root;
+    }
+
+    private static readonly string[] GameFolderWords = ["火炬", "torchlight"];
+    private static readonly string[] LauncherFolders = ["TapTap", "TapTap PC", "XD", "XDLauncher", "心动", "Games"];
+
+    private static IEnumerable<string> ChinaInstallRoots()
+    {
+        var bases = new List<string>();
+        foreach (var drive in DriveInfo.GetDrives())
+        {
+            try { if (drive.DriveType != DriveType.Fixed || !drive.IsReady) continue; }
+            catch (IOException) { continue; }
+            string r = drive.RootDirectory.FullName;
+            bases.Add(r);
+            foreach (var pf in new[] { "Program Files", "Program Files (x86)", "Games", "Game", "游戏" })
+            {
+                bases.Add(Path.Combine(r, pf));
+                foreach (var l in LauncherFolders) bases.Add(Path.Combine(r, pf, l));
+            }
+            foreach (var l in LauncherFolders) bases.Add(Path.Combine(r, l));
+        }
+        foreach (var b in bases)
+        {
+            foreach (var game in Subdirs(b).Where(d => GameFolderWords.Any(w => Path.GetFileName(d).Contains(w, StringComparison.OrdinalIgnoreCase))))
+            {
+                yield return game;
+                foreach (var inner in Subdirs(game)) yield return inner;
+            }
+        }
+    }
+
+    private static List<string> Subdirs(string dir)
+    {
+        try { return Directory.Exists(dir) ? Directory.GetDirectories(dir).ToList() : []; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return []; }
     }
 
     [GeneratedRegex("\"path\"\\s+\"([^\"]+)\"")]

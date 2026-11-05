@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 中文版测试用：在 Linux 上对截图跑识别和推算（不含 Windows 截屏）。 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>tartarus-scan-linux</AssemblyName>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tartarus.Vision\Tartarus.Vision.csproj" />
+    <ProjectReference Include="..\..\src\Tartarus.Solver\Tartarus.Solver.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Shared\AppFiles.cs" Link="AppFiles.cs" />
+    <Compile Include="..\Tartarus.ScanCli\Sim.cs" Link="Sim.cs" />
+    <!-- 安卓版的识别推算流程，在 Linux 上验证 -->
+    <Compile Include="..\..\src\Tartarus.App\HintService.cs" Link="Droid\HintService.cs" />
+    <Compile Include="..\..\src\Tartarus.App\Zh.cs" Link="Droid\Zh.cs" />
+    <Compile Include="..\..\android\TartarusDroid\Pipeline.cs" Link="Droid\Pipeline.cs" />
+    <Compile Include="..\..\android\TartarusDroid\Names.cs" Link="Droid\Names.cs" />
+  </ItemGroup>
+</Project>

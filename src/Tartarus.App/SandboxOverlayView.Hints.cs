@@ -57,6 +57,7 @@ public sealed partial class SandboxOverlayView
     /// <summary>A pill of pieces, each an optional icon and a colored text, side by side, centred over <paramref name="at"/>.</summary>
     private static void ColorPill(DrawingContext dc, List<(ImageSource? Icon, string Text, Brush Brush)> parts, Point at, double size, double ppd)
     {
+        size *= FontScale;
         var texts = parts.Select(p => new FormattedText(p.Text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Face, size, p.Brush, ppd)).ToList();
         // The icons' pictures leave a margin inside their squares: the text tucks into it, so each number reads as its
         // icon's; the pieces stand well apart.

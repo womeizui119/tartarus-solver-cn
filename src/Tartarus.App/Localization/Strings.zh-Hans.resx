@@ -270,4 +270,36 @@
   <data name="Update_Installing" xml:space="preserve"><value>安装中…</value></data>
   <data name="Update_OpenPage_Tip" xml:space="preserve"><value>打开发布页</value></data>
   <data name="Update_To" xml:space="preserve"><value>更新到 {0}</value></data>
+  <data name="Cn_AppName" xml:space="preserve"><value>塔罗斯监狱求解器</value></data>
+  <data name="Cn_Edition" xml:space="preserve"><value> · 中文版，基于 glcoder/TartarusSolver（MIT 协议）</value></data>
+  <data name="Cn_Recommend" xml:space="preserve"><value>当前推荐</value></data>
+  <data name="Cn_None" xml:space="preserve"><value>暂无</value></data>
+  <data name="Cn_NoneDetail" xml:space="preserve"><value>进入塔罗斯监狱后，这里会显示该怎么选、怎么走。</value></data>
+  <data name="Cn_NotConnected" xml:space="preserve"><value>还没连接游戏。打开游戏后会自动连接。</value></data>
+  <data name="Cn_Rereading" xml:space="preserve"><value>重新识别中…</value></data>
+  <data name="Cn_RereadingDetail" xml:space="preserve"><value>游戏窗口大小变了，正在重新识别画面。</value></data>
+  <data name="Cn_Eye" xml:space="preserve"><value>点击眼睛按钮</value></data>
+  <data name="Cn_EyeDetail" xml:space="preserve"><value>先看一眼棋盘（或回到选择界面），读完后给出推荐。</value></data>
+  <data name="Cn_Computing" xml:space="preserve"><value>计算中…</value></data>
+  <data name="Cn_ComputingDetail" xml:space="preserve"><value>正在推演每一步的结果。</value></data>
+  <data name="Cn_Tied" xml:space="preserve"><value>同样好：{0}</value></data>
+  <data name="Cn_Next" xml:space="preserve"><value>次选：{0}</value></data>
+  <data name="Cn_Only" xml:space="preserve"><value>只有这一个选择</value></data>
+  <data name="Cn_TwoClicks" xml:space="preserve"><value>先点卡牌，再点虚线框的牢房 · {0}</value></data>
+  <data name="Cn_Chests" xml:space="preserve"><value>预计本局结束：绮彩 ×{0} · 至臻 ×{1}</value></data>
+  <data name="Cn_Days" xml:space="preserve"><value>按剩余 {0} 天计算（本局共 {1} 天）</value></data>
+  <data name="Cn_NoLog" xml:space="preserve"><value> · 未找到游戏日志，天数只靠画面识别，可能不准</value></data>
+  <data name="Cn_Settings" xml:space="preserve"><value>⚙ 设置 ▾</value></data>
+  <data name="Cn_SettingsOpen" xml:space="preserve"><value>⚙ 设置 ▴</value></data>
+  <data name="Cn_HintStrength" xml:space="preserve"><value>提示强度</value></data>
+  <data name="Cn_OverlayFont" xml:space="preserve"><value>字号</value></data>
+  <data name="Cn_OverlayFont_Tip" xml:space="preserve"><value>浮层上提示文字的大小</value></data>
+  <data name="Cn_Other" xml:space="preserve"><value>其他</value></data>
+  <data name="Cn_UpdateLatest" xml:space="preserve"><value>已是最新版（{0}）</value></data>
+  <data name="Cn_UpdateNew" xml:space="preserve"><value>有新版本 {0}：点主窗口右下的按钮安装。</value></data>
+  <data name="Cn_UpdateCheckFailed" xml:space="preserve"><value>检查更新失败：{0}</value></data>
+  <data name="Cn_ReportSaved" xml:space="preserve"><value>问题报告已保存到：
+{0}
+
+需要反馈时，把最新的 report-*.zip 发给帮你排查的人即可。</value></data>
 </root>
