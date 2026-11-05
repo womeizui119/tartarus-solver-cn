@@ -20,6 +20,7 @@ public sealed class Pipeline : IDisposable
     private readonly object _gate = new();
 
     private string? _lastKey, _requestedKey;
+    private EditableSandbox? _sticky;
     private EditableSandbox? _lastBoard;
     private ScreenText? _lastText, _textBeforeRed;
     private int? _lastDays, _consumedDay;
@@ -75,13 +76,23 @@ public sealed class Pipeline : IDisposable
     private void Board(ScanResult r)
     {
         var board = EditableSandbox.FromScan(r);
+        // 这一帧被挡住、看不清的格子，沿用上次读到的；守卫标记（会闪）一时没认出也沿用上次的位置
+        // （2026-11-05 实机录屏：15 号格一帧“被挡住”一帧“未开”，守卫位置时有时无，局面一直“变”，红字就不刷新）
+        if (_sticky != null)
+        {
+            for (int n = 2; n <= 16; n++)
+                if (board[n].Covered && !_sticky[n].Covered) board.Cells[n - 1] = _sticky[n].Clone();
+            if (board.Warden <= 1 && _sticky.Warden > 1) board.Warden = _sticky.Warden;
+        }
+        _sticky = board.Clone();
         var live = _live?.Invoke();
         if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
 
         // 同一个局面读到两次才算数（最近 4 次里有 2 次即可，不必连着：卡牌发光动画会让个别几次读得不一样）
-        string key = SandboxText.Describe(board) + "|" + string.Join(",", r.Text?.Cards.Select(c => c.Meaning) ?? []) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
+        // 判断“是不是同一个局面”时不看绮彩计数和刑具栏（容易读得忽有忽无，变化时局面本身也会变）
+        string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "|" + string.Join(",", r.Text?.Cards.Select(c => c.Meaning) ?? []) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
         if (!Stable(key)) return;
         _lastBoard = board.Clone();
         _lastText = r.Text;
