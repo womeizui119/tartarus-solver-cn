@@ -7,20 +7,18 @@ using Android.Widget;
 namespace TartarusDroid;
 
 /// <summary>
-/// 悬在游戏上面的小窗：红字写这一步，下面是、预计收获、状态，最下面一排按钮。拖动标题栏可以移动。
-/// 窗口本身不抢焦点，点小窗以外的地方照常操作游戏。
+/// 悬在游戏上面的极简小窗：没有底框，只有一行带黑描边的红字写这一步（“去13号”“吃9号”“换”），
+/// “先点卡牌再点牢房”这类必须的提示用一行小字；按钮收在右边的“⋯”里，点一下才展开。
+/// 按住红字可以拖动位置。窗口本身不抢焦点，点小窗以外的地方照常操作游戏。
 /// </summary>
 public sealed class Overlay
 {
     private readonly Context _ctx;
     private readonly IWindowManager _wm;
-    private readonly LinearLayout _root;
-    private readonly LinearLayout _body;
-    private readonly TextView _main, _detail, _extra, _status, _autoBtn, _foldBtn, _title;
-    private string _lastMain = "";
-    private bool _lastHasHint;
+    private readonly LinearLayout _root, _menu;
+    private readonly TextView _main, _sub, _autoBtn;
     private readonly WindowManagerLayoutParams _lp;
-    private bool _shown, _auto, _folded;
+    private bool _shown, _auto;
 
     public event Action? SaveClicked, StopClicked;
     public event Action<bool>? AutoSaveChanged;
@@ -31,34 +29,25 @@ public sealed class Overlay
         _wm = Android.Runtime.Extensions.JavaCast<IWindowManager>(ctx.GetSystemService(Context.WindowService))!;
 
         _root = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
-        var bg = new GradientDrawable();
-        bg.SetColor(Color.Argb(225, 24, 26, 32));
-        bg.SetCornerRadius(Dp(12));
-        _root.Background = bg;
-        _root.SetPadding(Dp(12), Dp(6), Dp(12), Dp(8));
 
-        // 标题栏（拖动这里移动小窗）
-        var bar = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
-        _title = Text("⠿ 塔罗斯求解器", 12, Color.Rgb(154, 160, 172));
-        var title = _title;
-        bar.AddView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1));
-        _foldBtn = Button("—", () => Fold(!_folded));
-        bar.AddView(_foldBtn);
-        bar.AddView(Button("■", () => StopClicked?.Invoke()));
-        _root.AddView(bar);
+        var line = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
+        line.SetGravity(GravityFlags.CenterVertical);
+        _main = Outlined("准备中…", 24, Color.Rgb(154, 160, 172), bold: true);
+        line.AddView(_main);
+        var more = Outlined("  ⋯", 22, Color.Argb(200, 232, 232, 236), bold: true);
+        more.SetPadding(Dp(4), 0, Dp(4), 0);
+        more.Click += (_, _) => ToggleMenu();
+        line.AddView(more);
+        _root.AddView(line);
 
-        _body = new LinearLayout(ctx) { Orientation = Orientation.Vertical };
-        _main = Text("准备中…", 24, Color.Rgb(255, 0, 0), bold: true);
-        _detail = Text("", 13, Color.Rgb(200, 204, 212));
-        _extra = Text("", 12, Color.Rgb(230, 180, 110));
-        _status = Text("", 11, Color.Rgb(111, 117, 128));
-        _body.AddView(_main);
-        _body.AddView(_detail);
-        _body.AddView(_extra);
-        _body.AddView(_status);
-        var buttons = new LinearLayout(ctx) { Orientation = Orientation.Horizontal };
-        buttons.SetPadding(0, Dp(4), 0, 0);
-        buttons.AddView(Button("存图", () => SaveClicked?.Invoke()));
+        _sub = Outlined("", 12, Color.Rgb(240, 240, 240));
+        _sub.Visibility = ViewStates.Gone;
+        _root.AddView(_sub);
+
+        // 菜单：默认收起
+        _menu = new LinearLayout(ctx) { Orientation = Orientation.Horizontal, Visibility = ViewStates.Gone };
+        _menu.SetPadding(0, Dp(4), 0, 0);
+        _menu.AddView(Button("存图", () => SaveClicked?.Invoke()));
         _autoBtn = Button("自动存图：关", () =>
         {
             _auto = !_auto;
@@ -66,22 +55,22 @@ public sealed class Overlay
             _autoBtn.SetTextColor(_auto ? Color.Rgb(91, 227, 143) : Color.Rgb(232, 232, 236));
             AutoSaveChanged?.Invoke(_auto);
         });
-        buttons.AddView(_autoBtn);
-        _body.AddView(buttons);
-        _root.AddView(_body);
+        _menu.AddView(_autoBtn);
+        _menu.AddView(Button("停止", () => StopClicked?.Invoke()));
+        _root.AddView(_menu);
 
         _lp = new WindowManagerLayoutParams(
-            Dp(260), ViewGroup.LayoutParams.WrapContent,
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent,
             WindowManagerTypes.ApplicationOverlay,
             WindowManagerFlags.NotFocusable | WindowManagerFlags.LayoutNoLimits,
             Format.Translucent)
         {
-            // 默认在左下角：左上是游戏的目标和刑具栏，挡住了会认不出刑具。可以拖动标题栏换位置
+            // 默认在左下角：左上是游戏的目标和刑具栏。按住红字可以拖到别处
             Gravity = GravityFlags.Bottom | GravityFlags.Start,
             X = Dp(16),
             Y = Dp(8),
         };
-        Draggable(bar);
+        Draggable(_main);
     }
 
     public void Show(Shown s)
@@ -101,44 +90,31 @@ public sealed class Overlay
 
     public void Update(Shown s)
     {
-        _main.Text = s.Main;
-        _main.SetTextColor(s.HasHint ? Color.Rgb(255, 0, 0) : Color.Rgb(154, 160, 172));  // 推荐用正红色，和电脑版一致
-        _detail.Text = s.Detail;
-        _extra.Text = s.Extra ?? "";
-        _extra.Visibility = s.Extra != null ? ViewStates.Visible : ViewStates.Gone;
-        _status.Text = s.HasHint ? s.Status : "";
-        _status.Visibility = s.HasHint ? ViewStates.Visible : ViewStates.Gone;
-        _lastMain = s.Main;
-        _lastHasHint = s.HasHint;
-        ShowTitle();
-    }
-
-    public void Toast(string text) => Android.Widget.Toast.MakeText(_ctx, text, ToastLength.Short)!.Show();
-
-    private void Fold(bool folded)
-    {
-        _folded = folded;
-        _body.Visibility = folded ? ViewStates.Gone : ViewStates.Visible;
-        _foldBtn.Text = folded ? "＋" : "—";
-        ShowTitle();
-    }
-
-    /// <summary>收起时标题栏直接显示推荐（红字），展开时显示软件名。</summary>
-    private void ShowTitle()
-    {
-        if (_folded)
+        // 推荐：只写几号几号（“去13号牢房”→“去13号”）；没有推荐时灰色小字写状态，让人知道它在工作
+        if (s.HasHint)
         {
-            _title.Text = "⠿ " + _lastMain;
-            _title.SetTextColor(_lastHasHint ? Color.Rgb(255, 0, 0) : Color.Rgb(154, 160, 172));
-            _title.SetTextSize(Android.Util.ComplexUnitType.Sp, 16);
+            _main.Text = Short(s.Main);
+            _main.SetTextColor(Color.Rgb(255, 0, 0));
+            _main.SetTextSize(Android.Util.ComplexUnitType.Sp, 26);
         }
         else
         {
-            _title.Text = "⠿ 塔罗斯求解器";
-            _title.SetTextColor(Color.Rgb(154, 160, 172));
-            _title.SetTextSize(Android.Util.ComplexUnitType.Sp, 12);
+            _main.Text = s.Main;
+            _main.SetTextColor(Color.Rgb(190, 194, 202));
+            _main.SetTextSize(Android.Util.ComplexUnitType.Sp, 14);
         }
+        // 小字只在必须时出现：吃/寻猎要点两下、出错、黑屏这类
+        string sub = s.HasHint ? (s.Detail.StartsWith("先点") ? s.Detail : "") : (s.Main is "暂无" or "计算中…" or "准备中…" ? "" : s.Detail);
+        _sub.Text = sub;
+        _sub.Visibility = sub.Length > 0 ? ViewStates.Visible : ViewStates.Gone;
     }
+
+    private static string Short(string s) => s.Replace("号牢房", "号").Replace("：", "");
+
+    public void Toast(string text) => Android.Widget.Toast.MakeText(_ctx, text, ToastLength.Short)!.Show();
+
+    private void ToggleMenu() =>
+        _menu.Visibility = _menu.Visibility == ViewStates.Visible ? ViewStates.Gone : ViewStates.Visible;
 
     private void Draggable(View handle)
     {
@@ -161,25 +137,28 @@ public sealed class Overlay
         };
     }
 
-    private TextView Text(string s, float sp, Color color, bool bold = false)
+    /// <summary>带黑色描边阴影的字：没有底框也能在任何画面上看清。</summary>
+    private TextView Outlined(string s, float sp, Color color, bool bold = false)
     {
         var t = new TextView(_ctx) { Text = s };
         t.SetTextSize(Android.Util.ComplexUnitType.Sp, sp);
         t.SetTextColor(color);
+        t.SetShadowLayer(Dp(3), 0, 0, Color.Black);
         if (bold) t.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
         return t;
     }
 
     private TextView Button(string s, Action click)
     {
-        var b = Text(s, 13, Color.Rgb(232, 232, 236));
+        var b = new TextView(_ctx) { Text = s };
+        b.SetTextSize(Android.Util.ComplexUnitType.Sp, 13);
+        b.SetTextColor(Color.Rgb(232, 232, 236));
         b.SetPadding(Dp(10), Dp(4), Dp(10), Dp(4));
         var bg = new GradientDrawable();
-        bg.SetColor(Color.Argb(255, 50, 53, 62));
+        bg.SetColor(Color.Argb(200, 40, 42, 50));
         bg.SetCornerRadius(Dp(6));
         b.Background = bg;
-        var lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent) { MarginStart = Dp(6) };
-        b.LayoutParameters = lp;
+        b.LayoutParameters = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent) { MarginEnd = Dp(6) };
         b.Click += (_, _) => click();
         return b;
     }
