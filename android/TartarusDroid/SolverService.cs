@@ -94,7 +94,7 @@ public sealed class SolverService : Service
             StartForeground(NotificationId, n);
     }
 
-    /// <summary>录屏画面的大小（横竖屏会变）；长边最多 1600：识别不看分辨率，画面小一半，内存和耗时都省很多
+    /// <summary>录屏画面的大小（横竖屏会变）；长边最多 1280：识别不看分辨率，画面小一半，内存和耗时都省很多
     /// （2026-11-05：2868×1320 的手机按原尺寸录，每张 15MB，一秒四张，几步后被系统杀掉）。</summary>
     private (int W, int H, int Dpi) ScreenSize()
     {
@@ -102,7 +102,7 @@ public sealed class SolverService : Service
         var m = new DisplayMetrics();
         wm.DefaultDisplay!.GetRealMetrics(m);
         int w = m.WidthPixels, h = m.HeightPixels;
-        double k = Math.Min(1.0, 1600.0 / Math.Max(w, h));
+        double k = Math.Min(1.0, 1280.0 / Math.Max(w, h));  // 1280 宽的画面实测照样认得准，识别更快
         return ((int)(w * k) & ~1, (int)(h * k) & ~1, Math.Max(120, (int)((int)m.DensityDpi * k)));
     }
 
@@ -183,8 +183,8 @@ public sealed class SolverService : Service
             {
                 Log.Error("tartarus", ex.ToString());
             }
-            // 大约每 0.25 秒看一次（识别本身约 0.3 秒，基本是连着看），推荐出得快
-            var rest = TimeSpan.FromMilliseconds(250) - (DateTime.Now - started);
+            // 基本连着看（每轮至少隔 0.06 秒，给游戏喘口气）：走一步后两次读数约 0.3～0.4 秒就能凑齐
+            var rest = TimeSpan.FromMilliseconds(60) - (DateTime.Now - started);
             if (rest > TimeSpan.Zero) Thread.Sleep(rest);
         }
     }

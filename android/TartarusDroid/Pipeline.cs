@@ -37,9 +37,9 @@ public sealed class Pipeline : IDisposable
         _live = live;
         var cells = new CnnCellReader(panels: new SlotReader());
         var presence = SandboxPresence.FindTemplate() is { } t ? SandboxPresence.Load(t) : null;
-        _scanner = new LayoutScanner(new OcrEngine(threads: 2, gameLanguage: "zh"), cells, presence);
-        // 手机比电脑慢：每步最多算 0.8 秒
-        _hints = new HintService(playouts: 512, seconds: 0.8);
+        _scanner = new LayoutScanner(new OcrEngine(threads: Math.Clamp(Environment.ProcessorCount / 2, 2, 4), gameLanguage: "zh"), cells, presence);
+        // 手机比电脑慢：每步最多算 0.6 秒（出得快；结果和多算一会儿基本一样）
+        _hints = new HintService(playouts: 512, seconds: 0.6);
         _hints.Ready += h =>
         {
             lock (_gate) _hint = h;
