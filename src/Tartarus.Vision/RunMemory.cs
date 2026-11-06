@@ -75,13 +75,29 @@ public sealed class RunMemory
         _themeComing = false;
     }
 
-    /// <summary>Notes a Consume's or Hunt's target pick, on the day with these Remaining Days.</summary>
+    /// <summary>
+    /// Notes a Consume's or Hunt's target pick on screen, on the day with these Remaining Days. The day counts as
+    /// "consumed" only once the pick screen has been LEFT (the target chosen): while it's still up, this is the first
+    /// bite being chosen, not a chain (2026-11-06: counted at first sight, a first bite was searched as a chain bite
+    /// and "Cancel" hinted).
+    /// </summary>
     public void ConsumeSeen(int? days)
     {
-        if (days != null) _consumeDays = days;
+        if (days != null) _consumePickDays = days;
+        _consumePickUp = true;
     }
 
-    /// <summary>A target pick was seen on the day with these Remaining Days: for logs that don't tell (pages only, or no log).</summary>
+    /// <summary>The Sandbox is back (no target pick on screen): a pick that was up is now chosen.</summary>
+    public void ConsumeLeft()
+    {
+        if (_consumePickUp && _consumePickDays != null) _consumeDays = _consumePickDays;
+        _consumePickUp = false;
+    }
+
+    private int? _consumePickDays;
+    private bool _consumePickUp;
+
+    /// <summary>A target pick was chosen on the day with these Remaining Days: for logs that don't tell (pages only, or no log).</summary>
     public bool ConsumedOn(int days) => _consumeDays == days;
 
     /// <summary>A new run begins: everything goes but a theme seen just before it (the lobby shows it first).</summary>
@@ -204,7 +220,7 @@ public sealed class RunMemory
 
     public void Clear()
     {
-        _consumeDays = null;
+        _consumeDays = null; _consumePickDays = null; _consumePickUp = false;
         _held.Clear();
         _otherRead.Clear();
         (_objective, _otherObjective) = (null, null);

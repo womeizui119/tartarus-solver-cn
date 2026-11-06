@@ -1338,7 +1338,7 @@ public partial class ControlWindow : Window
                     return;
                 }
                 // The red screen spoils the panels' text too (the Objective): the last text read before it stands in.
-                if (!consumeOnly && !huntPick) (_textBeforeRed, _daysBeforeRed) = (r.Text, _hintSandbox.Days);
+                if (!consumeOnly && !huntPick) { (_textBeforeRed, _daysBeforeRed) = (r.Text, _hintSandbox.Days); _run.ConsumeLeft(); }
                 else _run.ConsumeSeen(_daysBeforeRed);
                 if (huntPick) _hintSandbox = _huntOffer!.Value.Board.Clone();
                 var text = consumeOnly ? _textBeforeRed ?? r.Text : huntPick ? _huntOffer!.Value.Text : r.Text;

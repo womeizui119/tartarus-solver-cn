@@ -89,7 +89,13 @@ public static class GameObservation
         }
         foreach (var c in pick.Cards)
             if (c.Id != null && R.GameData.InstrumentById(c.Id) is { } i) o.Offer.Add(i);
-        o.OfferForObjective = o.Instruments.Count > 0;
+        // 开局第一次选刑具，还是完成目标后的奖励？不能只看手上有没有刑具：刑具栏可能一直认不出（2026-11-06 手机实机：
+        // 前 10 天刑具栏全读成空，第 11 天进审讯室被当成开局，从第 1 天空棋盘算起，“煽动/赏赐”都给成“结束”）。
+        // 棋盘已经走过（有天数且不是第一天、或守卫不在起点、或有格子开过）就一定不是开局。
+        bool runUnderway = (under.Days is int days && days < R.GameData.Days - 1)   // 剩余天数少于 19：已经走过至少一天
+            || under.Warden > 1                                                        // 守卫离开了起点
+            || Enumerable.Range(2, 15).Any(n => under[n].Kind == CellKind.Inmate || under[n].Kind == CellKind.Empty);  // 有格子开过
+        o.OfferForObjective = o.Instruments.Count > 0 || runUnderway;
         // Instruments are offered only at the start and for the Objective: a later offer is the Objective done, whatever
         // the panel read under the cards said (2026-10-31: read 0/1, the search counted on a second Objective pick).
         if (o.OfferForObjective) o.ObjectiveDone = true;

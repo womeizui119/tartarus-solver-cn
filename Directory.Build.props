@@ -3,7 +3,7 @@
     <LangVersion>latest</LangVersion>
     <!-- The app's version (shown in its window and sent with bug reports): bump it for every build given to testers. -->
     <!-- 中文版：自己的版本号（从 1.0.0 起，只往上加，自动更新按它判断新旧）；TartarusUpstream 是所基于的原版版本。 -->
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <TartarusUpstream>0.7.44</TartarusUpstream>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

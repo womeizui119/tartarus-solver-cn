@@ -27,7 +27,8 @@ public sealed class Pipeline : IDisposable
     /// 2026-11-06 两台实机整局 190 次识别刑具栏全是 ?/hidden，推算不知道手上有什么刑具，推荐就偏。</summary>
     private readonly RunMemory _run = new();
     private ScreenText? _lastText, _textBeforeRed;
-    private int? _lastDays, _consumedDay;
+    private int? _lastDays, _consumeLeftDay;
+    private bool _inConsumePick, _consumedToday;
     private (int Warden, int? Days, EditableSandbox Board, ScreenText? Text)? _huntOffer;
     private Hint? _hint;
     private string _status = "准备中…";
@@ -152,8 +153,27 @@ public sealed class Pipeline : IDisposable
             Clear("等待选择画面…");
             return;
         }
-        if (consumeOnly) _consumedDay = board.Days;
-        else if (!huntPick) _textBeforeRed = r.Text;
+        // 今天吃过没有：第一次进“选目标”画面时还没吃；选完目标回到棋盘再出现“选目标”才是连吃
+        // （2026-11-06 实机：一进选目标就记成“今天吃过”，推算当成连吃，常常建议“先取消再吃”）
+        if (consumeOnly)
+        {
+            if (!_inConsumePick)
+            {
+                // 刚进选目标画面：上一次离开选目标画面时，如果是同一天，说明今天已经吃过一次了
+                _consumedToday = _consumeLeftDay != null && _consumeLeftDay == board.Days;
+                _inConsumePick = true;
+            }
+        }
+        else
+        {
+            if (_inConsumePick)
+            {
+                // 离开了选目标画面（选完了）：记下这一天
+                _inConsumePick = false;
+                _consumeLeftDay = _lastDays ?? board.Days;
+            }
+            if (!huntPick) _textBeforeRed = r.Text;
+        }
 
         // 同一个局面只推算一次：之后的帧里 OCR 的细小差别（比如读到了浮窗上的字）不会让推算一次次重来、永远算不完
         // （2026-11-05 实机：一直停在“计算中…”，切屏才恢复）
@@ -166,7 +186,9 @@ public sealed class Pipeline : IDisposable
         var hb = huntPick ? _huntOffer!.Value.Board.Clone() : board;
         var text = consumeOnly ? _textBeforeRed ?? r.Text : huntPick ? _huntOffer!.Value.Text : r.Text;
         var observation = GameObservation.From(hb, text, 0);
-        observation.ConsumedToday = live != null ? live.ConsumedToday : _consumedDay != null && _consumedDay == hb.Days;
+        observation.ConsumedToday = live != null ? live.ConsumedToday
+            : consumeOnly ? _consumedToday                                   // 选目标画面上：进来时判断好的
+            : _consumeLeftDay != null && _consumeLeftDay == hb.Days;          // 棋盘上：今天离开过选目标画面 = 今天吃过
         observation.ChainGoesOn = observation.ConsumedToday == true && consumeOnly;
         if (_hints.Request(observation, consumeOnly, huntPick)) lock (_gate) _hint = null;
         SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
@@ -234,6 +256,8 @@ public sealed class Pipeline : IDisposable
         _run.NewRun();
         _lastBoard = null;
         _lastDays = null;
+        _consumeLeftDay = null;
+        _inConsumePick = _consumedToday = false;
         _kind = null;
         _sticky = null;
         _recent.Clear();
