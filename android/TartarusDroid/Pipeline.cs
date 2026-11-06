@@ -20,6 +20,7 @@ public sealed class Pipeline : IDisposable
     private readonly object _gate = new();
 
     private string? _lastKey, _requestedKey, _kind;
+    private DateTime _lastTrace;
     private EditableSandbox? _sticky;
     private EditableSandbox? _lastBoard;
     private ScreenText? _lastText, _textBeforeRed;
@@ -70,6 +71,12 @@ public sealed class Pipeline : IDisposable
         var r = _scanner.Scan(frame);
         LastScanMs = sw.Elapsed.TotalMilliseconds;
         LastScan = r;
+        if (DateTime.Now - _lastTrace > TimeSpan.FromSeconds(1))
+        {
+            _lastTrace = DateTime.Now;
+            Trace?.Invoke($"帧 {frame.Width}×{frame.Height} · 识别 {LastScanMs:0} 毫秒 · {(r.Ok ? "棋盘" : r.Pick != null ? "选择:" + r.Pick.Kind : "无:" + r.Reason)}"
+                + (r.Ok ? " · " + SandboxText.Describe(EditableSandbox.FromScan(r)) : "") + $" · 状态「{_status}」");
+        }
         try
         {
             // 画面种类一变（选刑具 ↔ 棋盘 ↔ 没棋盘），上一种画面的推荐和稳定性记录立刻作废
@@ -187,7 +194,9 @@ public sealed class Pipeline : IDisposable
         _recent.Add(key);
         if (_recent.Count > 4) _recent.RemoveAt(0);
         _lastKey = key;
-        if (key == _requestedKey) { _changedReads = 0; return true; }
+        // 和正在推算的局面“差不多”（最多差 1 项）就当同一个：实时录屏每帧都有闪动的东西，逐字相同凑不齐
+        // （2026-11-06 实机：一直停在“识别中”，我这边用同一张图测永远复现不了）
+        if (_requestedKey != null && Close(key, _requestedKey)) { _changedReads = 0; return true; }
         if (_requestedKey != null && ++_changedReads >= 2)
         {
             _changedReads = 0;
@@ -195,7 +204,9 @@ public sealed class Pipeline : IDisposable
             _hints.Clear();
             lock (_gate) _hint = null;
         }
-        if (_recent.Count(k => k == key) >= 2) return true;
+        int alike = _recent.Count(k => Close(k, key));
+        if (alike >= 2) return true;
+        Trace?.Invoke($"识别中：最近 {_recent.Count} 次里相近的 {alike} 次 · {key}");
         SetStatus($"识别中… {LastScanMs:0} 毫秒");
         return false;
     }
@@ -209,6 +220,17 @@ public sealed class Pipeline : IDisposable
         _changedReads = 0;
         _lastKey = null;
         Clear("识别中…");
+    }
+
+    /// <summary>两次读数是不是同一个局面：按“|”和“·”拆成项，最多允许 1 项不同。</summary>
+    private static bool Close(string a, string b)
+    {
+        if (a == b) return true;
+        var xa = a.Split('|', '·'); var xb = b.Split('|', '·');
+        if (xa.Length != xb.Length) return false;
+        int diff = 0;
+        for (int i = 0; i < xa.Length; i++) if (xa[i].Trim() != xb[i].Trim() && ++diff > 1) return false;
+        return true;
     }
 
     private void Clear(string status)

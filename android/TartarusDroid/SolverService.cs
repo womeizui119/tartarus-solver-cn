@@ -115,6 +115,7 @@ public sealed class SolverService : Service
 
     /// <summary>转屏后跟着改大小（同一个授权只能建一次虚拟屏幕，所以改大小而不是重建）。</summary>
     private int _rebuilds;
+    private DateTime _lastGrabTrace;
 
     /// <summary>重建录屏通道（换一个新的画面接收器），逼系统重新推画面。</summary>
     private void Rebuild()
@@ -169,6 +170,11 @@ public sealed class SolverService : Service
             {
                 FollowRotation();
                 var frame = Grab();
+                if (DateTime.Now - _lastGrabTrace > TimeSpan.FromSeconds(1))
+                {
+                    _lastGrabTrace = DateTime.Now;
+                    Saver.Log(this, frame == null ? $"没拿到新帧（上一帧 {(DateTime.Now - _lastFrameAt).TotalSeconds:0.0} 秒前）" : $"拿到帧 {frame.Width}×{frame.Height}");
+                }
                 // 帧的方向和屏幕对不上（转屏那一瞬间残留的）直接丢掉
                 if (frame != null && (frame.Width > frame.Height) != (_w > _h)) frame = null;
                 // 画面静止时录屏不推新帧（切天过场之后、棋盘不动时都是这样），拿不到新帧就重复识别上一帧：

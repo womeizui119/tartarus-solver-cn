@@ -17,9 +17,19 @@ internal static class DroidTest
         Console.WriteLine($"加载模型 {sw.ElapsedMilliseconds} 毫秒");
         Shown? last = null;
         p.Changed += s => last = s;
+        // 环境变量 STREAM=1：每张图只识别一次、不等待，模拟手机实时录屏（每帧都略有不同）
+        bool stream = Environment.GetEnvironmentVariable("STREAM") == "1";
+        p.Trace += s => { if (stream) Console.WriteLine("    记录：" + s); };
         foreach (var f in files)
         {
             var frame = ImageIO.Load(f);
+            if (stream)
+            {
+                p.Process(frame);
+                Console.WriteLine($"  {Path.GetFileName(f)} 识别 {p.LastScanMs:0} 毫秒 → 大字「{last?.Main}」");
+                Thread.Sleep(150);
+                continue;
+            }
             for (int i = 0; i < 2; i++)
             {
                 p.Process(frame);
