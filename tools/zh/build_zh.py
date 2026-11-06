@@ -192,9 +192,38 @@ def check(official, target):
     print(f"核对通过：{target.name}（{target.stat().st_size / 1048576:.1f} MB）")
 
 
+def installer(zhver, full_zip, out):
+    """从完整版 zip 做 Windows 安装程序（NSIS）：双击装到用户目录，桌面/开始菜单快捷方式，带卸载。没装 makensis 就跳过。"""
+    if not shutil.which("makensis"):
+        print("没装 makensis，跳过安装程序")
+        return None
+    work = out / "installer-build"
+    shutil.rmtree(work, ignore_errors=True)
+    (work / "app").mkdir(parents=True)
+    with zipfile.ZipFile(full_zip) as z:
+        for info in z.infolist():
+            if info.is_dir():
+                continue
+            rel = info.filename.replace("\\", "/").split("/", 1)[1]  # 去掉顶层文件夹
+            dest = work / "app" / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(z.read(info))
+    shutil.copy(ROOT / "src/Tartarus.App/app.ico", work / "app.ico")
+    target = out / f"TartarusSolver-{zhver}-zh-setup.exe"
+    env = dict(os.environ, LC_ALL="C.UTF-8", LANG="C.UTF-8")
+    r = subprocess.run(["makensis", f"-DVERSION={zhver}", f"-DSRC={work / 'app'}", f"-DOUT={target}", str(ROOT / "tools/zh/installer.nsi")],
+                       capture_output=True, text=True, env=env)
+    if r.returncode != 0:
+        sys.exit("安装程序失败：\n" + r.stdout[-2000:] + r.stderr[-2000:])
+    shutil.rmtree(work, ignore_errors=True)
+    print(f"安装程序：{target.name}（{target.stat().st_size / 1048576:.1f} MB）")
+    return target
+
+
 def publish(zhver, version, files):
     notes = (f"困兽玩法推理 {zhver}，基于 glcoder/TartarusSolver v{version}（MIT 协议）修改。\n\n"
-             f"- 一般电脑下载 TartarusSolver-{zhver}-zh-full.zip（自带运行库，解压即用）\n"
+             f"- 推荐：TartarusSolver-{zhver}-zh-setup.exe 安装程序，双击安装，自动建桌面快捷方式\n"
+             f"- 绿色版：TartarusSolver-{zhver}-zh-full.zip（自带运行库，解压即用）\n"
              f"- 已装 .NET 9 桌面运行时的下载 TartarusSolver-{zhver}-zh.zip（体积小）\n\n"
              "已安装的中文版会自动提示更新。原作者：https://github.com/glcoder/TartarusSolver")
     run("gh", "release", "create", f"v{zhver}", "-R", REPO, "--title", f"困兽玩法推理 {zhver}", "--notes", notes,
@@ -232,6 +261,9 @@ def main():
     made = package(upstream, zhver, build(), a.out)
     for z in made:
         print("出包：", z)
+    full = next(z for z in made if z.name.endswith("-zh-full.zip"))
+    if installer(zhver, full, a.out) is not None:
+        made.append(a.out / f"TartarusSolver-{zhver}-zh-setup.exe")
     if a.publish:
         publish(zhver, upstream, made)
 
