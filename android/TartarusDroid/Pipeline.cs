@@ -145,6 +145,15 @@ public sealed class Pipeline : IDisposable
         }
         _sticky = board.Clone();
         Vote(board);
+        // 选目的地：同一个局面（守卫位置、天数不变）里读到过的目的地都算上，某一帧漏读一张卡不会少一个选项
+        // （2026-11-06 小米实机：选中审讯室时只读到 [5]，选中 5 号时只读到 [1]，推荐就在两者间来回反）
+        if (board.Phase == Phases.Destination && board.Destinations.Count > 0)
+        {
+            var destAt = (board.Warden, board.Days ?? _lastDays);
+            if (_destAt != destAt) { _destAt = destAt; _dest.Clear(); }
+            foreach (int c in board.Destinations) _dest.Add(c);
+            if (_dest.Count <= 3) board.Destinations = [.. _dest.Order()];
+        }
         var live = _live?.Invoke();
         if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
         if (board.Days is int nd && _lastDays is int od && nd > od) { _progress.Clear(); _chroma = 0; lock (_gate) _cache.Clear(); }  // 剩余天数变多：新的一局
@@ -160,7 +169,7 @@ public sealed class Pipeline : IDisposable
         board.Chromatic = Chroma(board.Chromatic, dim);
 
         // 局面键不看绮彩计数和刑具栏（容易读得忽有忽无，变化时局面本身也会变）
-        string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "|" + CardsKey(r.Text) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
+        string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "|" + (board.Phase == Phases.Destination && board.Destinations.Count > 0 ? "dest" : CardsKey(r.Text)) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
 
         bool destinations = board.Phase == Phases.Destination && board.Destinations.Count > 0;
         bool decision = r.Text?.Cards.Any(c => c.Meaning is var t
@@ -285,6 +294,8 @@ public sealed class Pipeline : IDisposable
     }
 
     private int _chroma, _chromaCand = -1, _chromaTimes;
+    private (int Warden, int? Days)? _destAt;
+    private readonly HashSet<int> _dest = [];
 
     /// <summary>
     /// 这一局的绮彩数：同一个新读数连着读到够多次才改。涨 1、2 个要 6 次；一下子涨很多（多半是读错）要 20 次；

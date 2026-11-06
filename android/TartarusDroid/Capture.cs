@@ -46,14 +46,16 @@ public sealed class Capture : Java.Lang.Object, ImageReader.IOnImageAvailableLis
         Build();
     }
 
-    /// <summary>当前屏幕尺寸（横竖屏会变）；长边最多 1280，识别不看分辨率，小画面省内存省时间。</summary>
+    /// <summary>当前屏幕尺寸（横竖屏会变）；长边最多 1920。
+    /// （2026-11-06 小米实机：1280 宽时选目的地的卡字太小，“去3号”和被选中的那张常读不出来，推荐在“去5号”和“去审讯室”间反复；
+    /// 1600 以上三张都读得出，识别只慢三成左右）</summary>
     private (int W, int H, int Dpi) ScreenSize()
     {
         var wm = Android.Runtime.Extensions.JavaCast<IWindowManager>(_ctx.GetSystemService(Context.WindowService))!;
         var m = new DisplayMetrics();
         wm.DefaultDisplay!.GetRealMetrics(m);
         int w = m.WidthPixels, h = m.HeightPixels;
-        double k = Math.Min(1.0, 1280.0 / Math.Max(w, h));
+        double k = Math.Min(1.0, 1920.0 / Math.Max(w, h));
         return ((int)(w * k) & ~1, (int)(h * k) & ~1, Math.Max(120, (int)((int)m.DensityDpi * k)));
     }
 
