@@ -109,12 +109,24 @@ public sealed class SolverService : Service
         var (w, h, dpi) = ScreenSize();
         Saver.Log(this, $"录屏画面 {w}×{h}");
         (_w, _h) = (w, h);
-        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1 /* RGBA_8888 */, 2);
+        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1 /* RGBA_8888 */, 4);
         _display = _projection!.CreateVirtualDisplay("tartarus", w, h, dpi, (DisplayFlags)16 /* VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR：镜像整个屏幕 */, _reader.Surface, null, null);
     }
 
     /// <summary>转屏后跟着改大小（同一个授权只能建一次虚拟屏幕，所以改大小而不是重建）。</summary>
     private int _rebuilds;
+
+    /// <summary>把缓冲区里积压的帧全部取出并关掉。</summary>
+    private void Drain()
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            Android.Media.Image? img = null;
+            try { img = _reader?.AcquireNextImage(); } catch (Exception) { break; }
+            if (img == null) break;
+            img.Close();
+        }
+    }
     private DateTime _lastGrabTrace;
 
     /// <summary>重建录屏通道（换一个新的画面接收器），逼系统重新推画面。</summary>
@@ -122,7 +134,7 @@ public sealed class SolverService : Service
     {
         var (w, h, dpi) = ScreenSize();
         var old = _reader;
-        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1, 2);
+        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1, 4);
         _display!.Resize(w, h, dpi);
         _display.Surface = _reader.Surface;
         (_w, _h) = (w, h);
@@ -136,7 +148,7 @@ public sealed class SolverService : Service
         if (w == _w && h == _h) return;
         Saver.Log(this, $"转屏：录屏画面 {_w}×{_h} → {w}×{h}");
         var old = _reader;
-        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1, 2);
+        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1, 4);
         _display!.Resize(w, h, dpi);
         _display.Surface = _reader.Surface;
         (_w, _h) = (w, h);
@@ -226,10 +238,36 @@ public sealed class SolverService : Service
         }
     }
 
-    /// <summary>取最新一帧，按行拷出来（每行末尾可能有对齐用的空字节）。</summary>
+    /// <summary>
+    /// 取最新一帧，按行拷出来（每行末尾可能有对齐用的空字节）。
+    /// 缓冲区要 4 张：AcquireLatestImage 内部先取再丢，只给 2 张时槽位很快占满，系统就不再推新帧——
+    /// 这正是“不切屏永远识别中、切屏（系统重置缓冲）才出一次”的原因（2026-11-06 实机）。
+    /// 拿到后立刻拷走、立刻关掉，不让槽位被识别过程占着。
+    /// </summary>
     private Frame? Grab()
     {
-        using var image = _reader?.AcquireLatestImage();
+        Android.Media.Image? image = null;
+        // 先把积压的旧帧全部取出关掉，只留最新一张：槽位始终有空，系统才会一直推
+        try
+        {
+            Android.Media.Image? newest = null;
+            for (int i = 0; i < 8; i++)
+            {
+                var next = _reader?.AcquireNextImage();
+                if (next == null) break;
+                newest?.Close();
+                newest = next;
+            }
+            image = newest;
+        }
+        catch (Java.Lang.IllegalStateException ex)
+        {
+            // 槽位满了：全部清空再来
+            Saver.Log(this, "录屏缓冲区满：" + ex.Message);
+            Drain();
+            return null;
+        }
+        using var _ = image;
         if (image == null) return null;
         var plane = image.GetPlanes()![0];
         var buffer = plane.Buffer!;
