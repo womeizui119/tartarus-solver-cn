@@ -28,6 +28,7 @@ public sealed class SolverService : Service
     private Capture? _capture;
     private Overlay? _overlay;
     private Pipeline? _pipeline;
+    private LogReader? _logReader;
     private Thread? _worker;
     private volatile bool _stop;
     private Frame? _lastFrame;
@@ -97,7 +98,12 @@ public sealed class SolverService : Service
         {
             ModelSetup.Prepare(this);
             Post(new Shown("准备中…", "正在加载识别和推算模型…", null, false, "准备中…"));
-            _pipeline = new Pipeline();
+            // 读游戏日志（可选）：Shizuku / 系统日志，读不到就只看画面
+            _logReader = new LogReader(this);
+            _logReader.StateChanged += s => _ui.Post(() => _overlay?.SetMode(s));
+            _ui.Post(() => _overlay?.SetMode(_logReader.State));
+            _pipeline = new Pipeline(() => _logReader?.Live);
+            _logReader.Activity += () => _pipeline?.LogActivity();
             _pipeline.Trace += s => Saver.Log(this, s);
             _pipeline.Changed += Post;
             Post(new Shown("暂无", "进入塔罗斯监狱后，这里会写出该怎么走", null, false, "就绪"));
@@ -243,6 +249,7 @@ public sealed class SolverService : Service
         Task.Run(() =>
         {
             _worker?.Join(3000);
+            _logReader?.Dispose();
             _pipeline?.Dispose();
         });
         base.OnDestroy();

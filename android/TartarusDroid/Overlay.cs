@@ -16,7 +16,7 @@ public sealed class Overlay
     private readonly Context _ctx;
     private readonly IWindowManager _wm;
     private readonly LinearLayout _root, _menu;
-    private readonly TextView _main, _sub, _autoBtn;
+    private readonly TextView _main, _sub, _autoBtn, _odds, _mode;
     private readonly WindowManagerLayoutParams _lp;
     private bool _shown, _auto;
     // 画框的全屏透明层：不接收触摸，点哪里都直接点到游戏上
@@ -42,6 +42,10 @@ public sealed class Overlay
         more.SetPadding(Dp(4), 0, Dp(4), 0);
         more.Click += (_, _) => ToggleMenu();
         line.AddView(more);
+        // “⋯”后面：推荐这一步后这一局预计的绮彩、至臻（和电脑版浮层上的 ×8.0 一样）
+        _odds = Outlined("", 14, Color.Rgb(255, 214, 102), bold: true);
+        _odds.SetPadding(Dp(6), 0, 0, 0);
+        line.AddView(_odds);
         _root.AddView(line);
 
         _sub = Outlined("", 12, Color.Rgb(240, 240, 240));
@@ -62,6 +66,10 @@ public sealed class Overlay
         _menu.AddView(_autoBtn);
         _menu.AddView(Button("停止", () => StopClicked?.Invoke()));
         _root.AddView(_menu);
+        // 菜单展开时下面一行小字：日志读取状态
+        _mode = Outlined("", 11, Color.Rgb(200, 204, 212));
+        _mode.Visibility = ViewStates.Gone;
+        _root.AddView(_mode);
 
         _lp = new WindowManagerLayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent,
@@ -144,6 +152,8 @@ public sealed class Overlay
         // 推荐：只写几号几号（“去13号牢房”→“去13号”）；没有推荐时灰色小字写状态，让人知道它在工作
         // 游戏画面上有标签时，左下角只留“⋯”：画面不乱（2026-11-07）
         bool labels = s.HasHint && s.Boxes.Count > 0;
+        _odds.Text = s.HasHint && s.Chromatic is double c ? $"绮彩{c:0.0} 至臻{s.Ultimate ?? 0:0.0}" : "";
+        _odds.Visibility = _odds.Text!.Length > 0 ? ViewStates.Visible : ViewStates.Gone;
         _main.Visibility = labels ? ViewStates.Gone : ViewStates.Visible;
         if (s.HasHint)
         {
@@ -167,8 +177,19 @@ public sealed class Overlay
 
     public void Toast(string text) => Android.Widget.Toast.MakeText(_ctx, text, ToastLength.Short)!.Show();
 
-    private void ToggleMenu() =>
-        _menu.Visibility = _menu.Visibility == ViewStates.Visible ? ViewStates.Gone : ViewStates.Visible;
+    private void ToggleMenu()
+    {
+        bool open = _menu.Visibility != ViewStates.Visible;
+        _menu.Visibility = open ? ViewStates.Visible : ViewStates.Gone;
+        _mode.Visibility = open ? ViewStates.Visible : ViewStates.Gone;
+    }
+
+    /// <summary>日志状态，如“日志：已连接（文件）”。</summary>
+    public void SetMode(string state)
+    {
+        _mode.Text = state;
+        _mode.SetTextColor(state.StartsWith("日志：已连接") ? Color.Rgb(91, 227, 143) : Color.Rgb(200, 204, 212));
+    }
 
     private void Draggable(View handle)
     {

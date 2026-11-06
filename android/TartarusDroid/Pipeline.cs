@@ -10,6 +10,9 @@ public sealed record Shown(string Main, string Detail, string? Extra, bool HasHi
 {
     /// <summary>要画在游戏画面上的框（录屏画面坐标）和那一帧的大小；没有推荐时为空。</summary>
     public IReadOnlyList<HintBox> Boxes { get; init; } = [];
+    /// <summary>推荐这一步后，这一局预计最后的绮彩、至臻数（和电脑版浮层上的 ×8.0 一样）。</summary>
+    public double? Chromatic { get; init; }
+    public double? Ultimate { get; init; }
     public int FrameWidth { get; init; }
     public int FrameHeight { get; init; }
 }
@@ -180,6 +183,9 @@ public sealed class Pipeline : IDisposable
     /// 玩家手指碰了屏幕：提示马上撤下（不等识别，2026-11-07：提示消失太慢）。点完画面变了就按新局面重新给；
     /// 1 秒后画面还是原来那样（点在空处），原来的提示再出来。
     /// </summary>
+    /// <summary>日志里刚有新动静（走了一步、点了卡、换了天）：和手指点屏幕一样，提示马上撤下。</summary>
+    public void LogActivity() => UserTapped();
+
     public void UserTapped()
     {
         _tapAt = DateTime.Now;
@@ -286,6 +292,8 @@ public sealed class Pipeline : IDisposable
         // 只看绮彩栏自己被挡没有（刑具栏在手机上常读成 hidden，拿它判断会让绮彩数永远不更新）
         bool dim = r.Chromatic?.Covered == true;
         board.Chromatic = Chroma(board.Chromatic, dim);
+        // 读到日志：绮彩数至少是日志里记的
+        if (_live?.Invoke() is { FromStart: true } logRun) board.Chromatic = Math.Max(board.Chromatic, logRun.ChromaticAtLeast);
 
         // 局面键不看绮彩计数和刑具栏（容易读得忽有忽无，变化时局面本身也会变）
         string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "§" + (board.Phase == Phases.Destination && board.Destinations.Count > 0 ? "dest" : CardsKey(r.Text)) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
@@ -338,6 +346,14 @@ public sealed class Pipeline : IDisposable
             observation.ObjectiveProgress = best;
             // 目标完成过就一直算完成（读到“已完成”，或中途给过一次选刑具 = 目标奖励）
             if (observation.ObjectiveDone) _objectiveDone = true;
+            // 读到日志：目标完成没有、“弱肉强食”吃了几次、“暗流涌动”触发了几次狱中事变，以日志为准（和电脑版一样）
+            if (b.Live is { FromStart: true } lr)
+            {
+                if (lr.ObjectiveDone) _objectiveDone = true;
+                int counted = obj == Tartarus.Rules.ObjectiveKind.SurvivalOfTheFittest ? lr.Consumes
+                    : obj == Tartarus.Rules.ObjectiveKind.Undercurrents ? lr.Incidents : -1;
+                if (counted >= 0) observation.ObjectiveProgress = Math.Max(observation.ObjectiveProgress, Math.Min(counted, Tartarus.Rules.GameData.Target(obj)));
+            }
             if (_objectiveDone) observation.ObjectiveDone = true;
         }
         // 审讯室：卡读出一张就够了（两张一定同时在）
@@ -510,7 +526,7 @@ public sealed class Pipeline : IDisposable
             ? "先点卡牌，再点目标牢房" : "收益最高的选择";
         string extra = $"预计本局：绮彩 ×{best.Chromatic:0.0} · 至臻 ×{best.Ultimate:0.0}";
         if (hint.State.MaxDays > 0) extra += $"\n按剩余 {hint.State.RemainingDays} 天计算";
-        return new Shown(main, detail, extra, true, status);
+        return new Shown(main, detail, extra, true, status) { Chromatic = best.Chromatic, Ultimate = best.Ultimate };
     }
 
     public void Dispose()

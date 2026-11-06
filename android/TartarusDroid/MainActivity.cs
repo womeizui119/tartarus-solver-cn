@@ -26,7 +26,7 @@ public class MainActivity : Activity
         root.SetBackgroundColor(Color.Rgb(30, 31, 36));
 
         root.AddView(Label("困兽玩法推理", 24, Color.Rgb(232, 232, 236), bold: true));
-        root.AddView(Label("安卓浮窗版 2.2（测试版）", 13, Color.Rgb(154, 160, 172)));
+        root.AddView(Label("安卓浮窗版 3.2（测试版）", 13, Color.Rgb(154, 160, 172)));
         root.AddView(Label("\n在游戏上面开一个小窗，写出塔罗斯监狱这一步怎么走。只看画面，不碰游戏操作。\n", 15, Color.Rgb(200, 204, 212)));
 
         root.AddView(Label("第 1 步：允许显示在其他应用上层", 16, Color.Rgb(232, 232, 236), bold: true));
@@ -42,6 +42,8 @@ public class MainActivity : Activity
         _start.Click += (_, _) => Start();
         root.AddView(_start);
 
+        root.AddView(Label("\n可选：读取游戏日志（更快、更准）", 16, Color.Rgb(232, 232, 236), bold: true));
+        root.AddView(Label("游戏里先开启日志。手机装好并启动 Shizuku，再点上面的“开始”，Shizuku 弹窗问是否允许“困兽玩法推理”，点允许。第一次允许后请点小窗“⋯”里的“停止”，再重新打开一次。不装也能用，只看画面。点小窗“⋯”能看到日志有没有连上。", 13, Color.Rgb(154, 160, 172)));
         root.AddView(Label("\n测试时请打开小窗上的“自动存图”，玩完一局后把手机“下载/TartarusSolver”文件夹里的图片和 记录.txt 发过来。", 13, Color.Rgb(230, 180, 110)));
 
         SetContentView(new ScrollView(this) { }.Also(s => s.AddView(root)));
