@@ -71,7 +71,7 @@ public sealed class AppSettings
     };
     /// <summary>The defaults this file was last brought up to (see <see cref="Upgrade"/>); 0 in files older than it.</summary>
     public int SettingsVersion { get; set; }
-    private const int CurrentVersion = 4;
+    private const int CurrentVersion = 5;
     /// <summary>Where bug reports go (a Sentry DSN); empty: the app's own (BugReports.DefaultDsn).</summary>
     public string? ReportDsn { get; set; }
     /// <summary>A copy of the screen instead of window capture from the start; only in this file, the app turns to it by itself where it must.</summary>
@@ -134,6 +134,10 @@ public sealed class AppSettings
         if (WindowTitle == @"^Torchlight: Infinite\s*$") WindowTitle = defaults.WindowTitle;
         if (SettingsVersion < 4 && AutoScanSeconds == 0.5) AutoScanSeconds = defaults.AutoScanSeconds;
         if (string.IsNullOrEmpty(GameLanguage)) (GameLanguage, DetectGameLanguage) = ("zh", false);
+        // 中文版：从原版（英文）换过来的玩家，设置文件里界面语言是 en / auto，界面就成了英文（2026-11-06 玩家反映）。
+        // 第一次升到本版时改成简体中文；明确选过繁体等其他语言的保留。
+        if (SettingsVersion < 5 && (string.IsNullOrEmpty(UiLanguage) || UiLanguage.Equals("en", StringComparison.OrdinalIgnoreCase) || UiLanguage.Equals("auto", StringComparison.OrdinalIgnoreCase)))
+            UiLanguage = "zh";
         foreach (var (action, gesture) in defaults.Hotkeys) Hotkeys.TryAdd(action, gesture);
         SettingsVersion = CurrentVersion;
     }
