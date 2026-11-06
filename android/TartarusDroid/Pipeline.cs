@@ -141,8 +141,12 @@ public sealed class Pipeline : IDisposable
         {
             for (int n = 2; n <= 16; n++)
                 if (board[n].Covered && !_sticky[n].Covered) board.Cells[n - 1] = _sticky[n].Clone();
-            if (board.Warden <= 1 && _sticky.Warden > 1) board.Warden = _sticky.Warden;
+            // 只有完全没认出守卫（0）才沿用上次的位置。1 是审讯室，是真的位置，不能换掉
+            // （2026-11-06 小米实机 2.6：守卫进了审讯室读成 1，被换成上一步的 16 号，推算不知道在审讯室，“煽动/赏赐”给成“结束”“吃9号”）
+            if (board.Warden == 0 && _sticky.Warden > 0) board.Warden = _sticky.Warden;
         }
+        // 画面上是“煽动 / 赏赐”：守卫一定在审讯室
+        if (r.Text?.Cards.Any(c => c.Meaning is "instigate" or "bestow") == true) board.Warden = 1;
         _sticky = board.Clone();
         Vote(board);
         // 选目的地：同一个局面（守卫位置、天数不变）里读到过的目的地都算上，某一帧漏读一张卡不会少一个选项
