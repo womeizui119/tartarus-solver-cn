@@ -74,8 +74,8 @@ public sealed class SlotReader : ICellReader
     public ScanResult Read(Frame frame, ScreenLayout layout)
     {
         var sw = Stopwatch.StartNew();
-        var chromatic = Classify(_chromatic, Enumerable.Range(0, ScreenLayout.ChromaticSlots).Select(i => layout.Crop(frame, ScreenLayout.ChromaticSlot(i))).ToList());
         var instruments = ReadInstruments(frame, layout);
+        var chromatic = ReadChromatic(frame, layout);
 
         int filled = chromatic.Count(c => _chromaticClasses[c.Class] == "filled");
         bool covered = chromatic.Any(c => _chromaticClasses[c.Class] == "hidden");
@@ -149,6 +149,70 @@ public sealed class SlotReader : ICellReader
         _slotShiftKnown = true;
         return best.Read;
     }
+
+    /// <summary>
+    /// 绮彩栏横向偏移（画布单位，负数 = 往左）：手机版游戏的绮彩栏比电脑版靠左，和刑具栏靠右一个道理
+    /// （2026-11-06 华为录屏：绮彩栏明明有 3 个，按电脑版坐标整局读成 0，推算以为一个绮彩都没有）。
+    /// 一次读数的把握：每格都认得清（有/空）、而且“有”的格子从第一格起连着排（游戏从上往下、从左往右填）。
+    /// </summary>
+    private double _chromaShift;
+    private bool _chromaShiftKnown;
+    private int _chromaSinceSearch;
+    private static readonly double[] ChromaSteps = Enumerable.Range(0, 25).Select(i => -i * 10.0).ToArray();  // 0 ～ -240
+
+    private List<(int Class, float P)> ReadChromatic(Frame frame, ScreenLayout layout)
+    {
+        List<(int Class, float P)> At(double shift) =>
+            Classify(_chromatic, Enumerable.Range(0, ScreenLayout.ChromaticSlots).Select(i => layout.Crop(frame, ScreenLayout.ChromaticSlot(i).Offset(shift, 0))).ToList());
+        double Score(List<(int Class, float P)> r)
+        {
+            if (r.Any(c => _chromaticClasses[c.Class] == "hidden")) return -1;
+            double s = r.Sum(c => (double)c.P);
+            // 有绮彩的格子要从第一格起连着：中间断开 = 裁偏了
+            bool gap = false, bad = false;
+            foreach (var c in r)
+            {
+                bool filled = _chromaticClasses[c.Class] == "filled";
+                if (!filled) gap = true;
+                else if (gap) bad = true;
+            }
+            int n = r.Count(c => _chromaticClasses[c.Class] == "filled");
+            return bad ? s - 5 : s + n * 0.3;
+        }
+        // 只有手机那样的宽屏（宽高比 > 1.9）才挪；电脑（16:9、16:10）一律用原位，和以前完全一样
+        bool debug = Environment.GetEnvironmentVariable("SLOT_DEBUG") == "1";
+        if ((double)frame.Width / frame.Height < 1.9 && !debug) return At(0);
+        // 刑具栏往右偏多少，绮彩栏就往左偏多少（2026-11-06 华为录屏：刑具 +70～+100、绮彩 −60～−130）。
+        // 刑具一拿到就定了位置，绮彩栏哪怕只有 1 个、甚至还空着也能按这个读
+        double shift = _chromaShiftKnown ? _chromaShift : _slotShiftKnown ? -_slotShift : 0;
+        var atCurrent = At(shift);
+        bool anyFilled = atCurrent.Any(c => _chromaticClasses[c.Class] == "filled");
+        // 刑具栏还没定位、也没自己找到过：栏里有绮彩了才搜得出（空栏在哪都像“全空”）
+        if (_chromaShiftKnown || _slotShiftKnown) { if (!debug) return atCurrent; }
+        else if (!anyFilled && !debug) return atCurrent;
+        if (!debug && ++_chromaSinceSearch < 10 && _chromaSinceSearch > 1) return atCurrent;
+        _chromaSinceSearch = 1;
+        var tried = ChromaSteps.Select(sh => (Shift: sh, Read: At(sh))).Select(x => (x.Shift, x.Read, Score: Score(x.Read))).ToList();
+        if (Environment.GetEnvironmentVariable("SLOT_DEBUG") == "1")
+            foreach (var x in tried) Console.Error.WriteLine($"  绮彩偏移 {x.Shift,5:0}: 得分 {x.Score:0.00}  " + string.Join(" ", x.Read.Select(r => $"{_chromaticClasses[r.Item1][0]}{r.Item2:0.0}")));
+        // 只有读到了绮彩（有“有”的格子）才能确定位置：空栏在哪个偏移都像“全空”
+        var withFilled = tried.Where(x => x.Read.Any(c => _chromaticClasses[c.Class] == "filled") && x.Score > 0).ToList();
+        if (withFilled.Count == 0) return atCurrent;
+        double top = withFilled.Max(x => x.Score);
+        var tops = withFilled.Where(x => x.Score >= top - 0.3).OrderBy(x => x.Shift).ToList();
+        var best = tops[tops.Count / 2];
+        if (_chromaShiftKnown && Math.Abs(best.Shift - _chromaShift) > 1e-9)
+        {
+            var current = tried.First(x => Math.Abs(x.Shift - _chromaShift) < 1e-9);
+            if (best.Score < current.Score + 1) return current.Read;
+        }
+        _chromaShift = best.Shift;
+        _chromaShiftKnown = true;
+        return best.Read;
+    }
+
+    /// <summary>当前用的绮彩栏横向偏移，排查用。</summary>
+    public double ChromaShift => _chromaShift;
 
     /// <summary>当前用的刑具格横向偏移（画布单位），排查用。</summary>
     public double SlotShift => _slotShift;

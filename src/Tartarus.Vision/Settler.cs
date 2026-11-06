@@ -5,7 +5,8 @@ namespace Tartarus.Vision;
 /// 以前每变一下就重算、撤下提示，推荐一直闪、一直“计算中”（2026-11-06 两台实机）。这里的规则：
 /// <list type="bullet">
 /// <item>还没认定任何局面：同一个读数（或只差一项的读数）在最近 <see cref="Window"/> 次里出现 2 次就认定。</item>
-/// <item>已经认定了 C：读数和 C 只差一项，就当还是 C（读错一处不算变）。</item>
+/// <item>已经认定了 C：读数和 C 只差一项，就当还是 C（读错一处不算变）。键里“§”之后的部分（卡牌、画面状态）不算“一项”，
+/// 不同就是不同的局面。</item>
 /// <item>只差一项的变化，要在最近 20 次里占到 15 次才算真变。</item>
 /// <item>换成新局面 K，要同时满足：K 在最近几次里占了 <see cref="Need"/> 次，而且 C 只剩不到 2 次。
 /// 两个读数来回跳（A、B、A、B）时两边都凑不够，就一直停在原来的局面上，不闪。</item>
@@ -67,6 +68,16 @@ public sealed class Settler
     public static bool Close(string a, string b)
     {
         if (a == b) return true;
+        // “§”后面是卡牌和画面状态（有没有卡、是什么卡）：这一段必须一模一样，不当成读错
+        // （2026-11-06 华为实机：换完以后只多出“吃 / 结束”两张卡，被当成“只差一项”，等了 16 秒才认，一直显示“暂无”）
+        int ia = a.IndexOf('§'), ib = b.IndexOf('§');
+        if ((ia < 0) != (ib < 0)) return false;
+        if (ia >= 0)
+        {
+            if (a[ia..] != b[ib..]) return false;
+            a = a[..ia];
+            b = b[..ib];
+        }
         var xa = a.Split('|', '·');
         var xb = b.Split('|', '·');
         if (xa.Length != xb.Length) return false;

@@ -63,7 +63,9 @@ public static class GameObservation
         if (text != null && Objective(text) is { } objective)
         {
             o.Objective = objective;
-            o.ObjectiveDone = text.ObjectiveProgress?.Contains("Complete", StringComparison.OrdinalIgnoreCase) == true;
+            // 中文客户端写“已完成”（2026-11-06 华为录屏：第 5 天就完成了“牢门之后”，手机一直当成 8/10 没完成，整局推算都在凑开牢房）
+            o.ObjectiveDone = text.ObjectiveProgress?.Contains("Complete", StringComparison.OrdinalIgnoreCase) == true
+                || text.ObjectiveProgress?.Replace(" ", "") is { } zh && (zh.Contains("完成") || zh.Contains("已完"));  // 折行时读成“已完 / 成”
             if (text.Progress is { } p) o.ObjectiveProgress = p.Done;
         }
         return o;

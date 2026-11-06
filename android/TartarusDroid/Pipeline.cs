@@ -54,7 +54,7 @@ public sealed class Pipeline : IDisposable
         // 和电脑版一样每个选项 1024 局模拟；手机慢，时间给到 1.5 秒才跑得满（2.4 起局面认定后不再反复重算，有这个时间）
         // （2026-11-06：手机原来 512 局、0.6 秒，玩家反映推荐不如电脑版、彩色箱子少）
         _hints = new HintService(playouts: int.TryParse(Environment.GetEnvironmentVariable("TARTARUS_PLAYOUTS"), out int po) ? po : 1024,
-            seconds: double.TryParse(Environment.GetEnvironmentVariable("TARTARUS_SECONDS"), out double sec) ? sec : 1.5);
+            seconds: double.TryParse(Environment.GetEnvironmentVariable("TARTARUS_SECONDS"), out double sec) ? sec : 1.2);
         _hints.Ready += h =>
         {
             lock (_gate)
@@ -62,6 +62,13 @@ public sealed class Pipeline : IDisposable
                 // 只认当前认定局面的结果：算完时局面已经换了，就只存进缓存，不显示
                 if (_pendingKey == null) return;
                 if (_cache.Count > 60) _cache.Clear();
+                if (IsCancel(h) && _held == null && !_cache.ContainsKey(_pendingKey))
+                {
+                    _held = h;
+                    _heldUntil = DateTime.Now.AddSeconds(1.5);
+                    Trace?.Invoke("推算完成（取消类，画面保持 1.5 秒再显示）");
+                    return;
+                }
                 _cache[_pendingKey] = h;
                 Trace?.Invoke($"推算完成：{h.Result.Playouts} 局模拟 · 推荐 {(h.Ranked.Count > 0 ? Names.Ranked(h, h.Ranked[0]) : "无")} · 各选项："
                     + string.Join("；", h.Ranked.Take(4).Select(a => $"{Names.Ranked(h, a)} 绮彩{a.Chromatic:0.00} 至臻{a.Ultimate:0.00}")));
@@ -109,6 +116,16 @@ public sealed class Pipeline : IDisposable
                 : r.Pick is { } p ? "pick|" + p.Kind + "|" + string.Join(",", p.Cards.Select(c => c.Id ?? c.Text))
                 : "none";
             bool changed = _settle.Feed(key);
+            // 画面换了种类（棋盘 ↔ 选刑具/珍藏 ↔ 没棋盘）连着 2 帧：旧提示马上撤下，不等新画面认定
+            // （2026-11-06 华为录屏：连吃结束进“典狱长珍藏”，“取消 → 结束”在珍藏画面上挂了 10 秒）
+            string kindNow = KindOf(key);
+            if (!changed && _settle.Committed is { } committed && KindOf(committed) != kindNow)
+            {
+                if (++_otherKind >= 2 && HasHint) Show(null, "识别中…", keepPending: true);
+            }
+            else _otherKind = 0;
+            // 回到认定的画面：提示重新显示（算过的直接用）；等待中的“取消”提示到时间了也在这里放出来
+            if (!changed && _settle.Matches(key)) ShowSettled();
             if (b != null && _settle.Matches(key))
             {
                 _lastBoard = b.Board.Clone();
@@ -130,6 +147,32 @@ public sealed class Pipeline : IDisposable
             Clear("出错：" + ex.Message);
         }
     }
+
+    private int _otherKind;
+    /// <summary>这一局的目标已经完成（新的一局清掉）。</summary>
+    private bool _objectiveDone;
+    private Hint? _held;
+    private DateTime _heldUntil;
+
+    private static string KindOf(string key) => key.StartsWith("pick|") ? "pick" : key == "none" ? "none" : "board";
+
+    /// <summary>当前认定局面的提示：缓存里有就显示；“取消”类提示到时间才显示。</summary>
+    private void ShowSettled()
+    {
+        Hint? show = null;
+        lock (_gate)
+        {
+            if (_pendingKey == null || _pendingKey != _settle.Committed) return;
+            if (_held != null && DateTime.Now >= _heldUntil) { show = _held; _held = null; _cache[_pendingKey] = show; }
+            else if (_hint == null && _held == null && _cache.TryGetValue(_pendingKey, out var c)) show = c;
+            if (show == null) return;
+            _hint = show;
+        }
+        SetStatus($"已识别 · {LastScanMs:0} 毫秒");
+    }
+
+    /// <summary>选吃的目标时推荐“取消”：多半是吃完一口、红屏正在退的过渡画面。画面保持 1.5 秒才显示（2026-11-06 华为录屏：连吃最后总闪一下“取消 → 结束”）。</summary>
+    private static bool IsCancel(Hint h) => h.ConsumeOnly && h.Ranked.Count > 0 && h.Ranked[0].Action.Kind is not (ActionKind.Consume or ActionKind.Chain);
 
     private sealed record BoardRead(EditableSandbox Board, string Key, bool Decision, bool Destinations, bool ConsumeOnly, bool HuntPick, LoggedRun? Live);
 
@@ -162,7 +205,7 @@ public sealed class Pipeline : IDisposable
         }
         var live = _live?.Invoke();
         if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
-        if (board.Days is int nd && _lastDays is int od && nd > od) { _progress.Clear(); _chroma = 0; lock (_gate) _cache.Clear(); }  // 剩余天数变多：新的一局
+        if (board.Days is int nd && _lastDays is int od && nd > od) { _progress.Clear(); _chroma = 0; _objectiveDone = false; lock (_gate) _cache.Clear(); }  // 剩余天数变多：新的一局
         _run.Days(board.Days);
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
@@ -171,11 +214,12 @@ public sealed class Pipeline : IDisposable
         board.MarksByInstruments();
         // 绮彩数用手机自己的跟踪（见 Chroma），不用电脑版的“读高一次就记住”：手机画面变暗、动画的那几帧常读成 6、10
         // （2026-11-06 小米实机：绮彩栏是空的，推算却一直当成 6/10，不再去争彩色，玩家说彩色箱子比电脑版少）
-        bool dim = r.Chromatic?.Covered == true || r.Instruments?.Instruments.Any(x => x.Id == SlotReader.Hidden) == true;
+        // 只看绮彩栏自己被挡没有（刑具栏在手机上常读成 hidden，拿它判断会让绮彩数永远不更新）
+        bool dim = r.Chromatic?.Covered == true;
         board.Chromatic = Chroma(board.Chromatic, dim);
 
         // 局面键不看绮彩计数和刑具栏（容易读得忽有忽无，变化时局面本身也会变）
-        string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "|" + (board.Phase == Phases.Destination && board.Destinations.Count > 0 ? "dest" : CardsKey(r.Text)) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
+        string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "§" + (board.Phase == Phases.Destination && board.Destinations.Count > 0 ? "dest" : CardsKey(r.Text)) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
 
         bool destinations = board.Phase == Phases.Destination && board.Destinations.Count > 0;
         bool decision = r.Text?.Cards.Any(c => c.Meaning is var t
@@ -223,6 +267,9 @@ public sealed class Pipeline : IDisposable
             int best = Math.Max(observation.ObjectiveProgress, _progress.GetValueOrDefault(obj));
             _progress[obj] = best;
             observation.ObjectiveProgress = best;
+            // 目标完成过就一直算完成（读到“已完成”，或中途给过一次选刑具 = 目标奖励）
+            if (observation.ObjectiveDone) _objectiveDone = true;
+            if (_objectiveDone) observation.ObjectiveDone = true;
         }
         // 审讯室：卡读出一张就够了（两张一定同时在）
         if (text?.Cards.Any(c => c.Meaning is "instigate" or "bestow") == true) observation.Interrogation = true;
@@ -248,6 +295,11 @@ public sealed class Pipeline : IDisposable
         }
         Trace?.Invoke($"选择画面 {pick.Kind}：在 {(_lastBoard == null ? "空" : "当前")}局面上算 · 第 {under.Days?.ToString() ?? "?"} 天 · 刑具 [{string.Join(",", under.Instruments)}]");
         var observation = GameObservation.FromPick(pick, under, _lastText);
+        if (pick.Kind != PickRead.Treasure && observation.OfferForObjective && _lastBoard != null)
+        {
+            if (!_objectiveDone) Trace?.Invoke("中途选刑具：目标已完成");
+            _objectiveDone = true;
+        }
         Request(key, observation, consumeOnly: false, huntOnly: false);
     }
 
@@ -258,6 +310,7 @@ public sealed class Pipeline : IDisposable
         lock (_gate)
         {
             _pendingKey = key;
+            _held = null;
             _cache.TryGetValue(key, out cached);
             _hint = cached;
         }
@@ -275,9 +328,9 @@ public sealed class Pipeline : IDisposable
         SetStatus("计算中…");
     }
 
-    private void Show(Hint? hint, string status)
+    private void Show(Hint? hint, string status, bool keepPending = false)
     {
-        lock (_gate) { _hint = hint; _pendingKey = null; }
+        lock (_gate) { _hint = hint; if (!keepPending) { _pendingKey = null; _held = null; } }
         SetStatus(status);
     }
 
@@ -293,6 +346,7 @@ public sealed class Pipeline : IDisposable
         _cellHist.Clear();
         _progress.Clear();
         _settle.Reset();
+        _objectiveDone = false;
         _chroma = 0;
         _chromaCand = -1;
         lock (_gate) _cache.Clear();
@@ -312,7 +366,7 @@ public sealed class Pipeline : IDisposable
         if (dim || read == _chroma) { if (!dim) { _chromaCand = -1; _chromaTimes = 0; } return _chroma; }
         _chromaTimes = read == _chromaCand ? _chromaTimes + 1 : 1;
         _chromaCand = read;
-        int need = read > _chroma ? (read - _chroma <= 2 ? 6 : 20) : 12;
+        int need = read > _chroma ? (read - _chroma <= 2 ? 4 : 20) : 12;
         if (_chromaTimes >= need)
         {
             Trace?.Invoke($"绮彩数 {_chroma} → {read}");

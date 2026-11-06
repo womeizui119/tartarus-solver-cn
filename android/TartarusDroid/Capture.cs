@@ -46,7 +46,7 @@ public sealed class Capture : Java.Lang.Object, ImageReader.IOnImageAvailableLis
         Build();
     }
 
-    /// <summary>当前屏幕尺寸（横竖屏会变）；长边最多 1920。
+    /// <summary>当前屏幕尺寸（横竖屏会变）；长边最多 1600（2026-11-06 华为实机 1920 时每帧识别 0.5～1.4 秒太慢；1600 选目的地三张卡仍读得出）。
     /// （2026-11-06 小米实机：1280 宽时选目的地的卡字太小，“去3号”和被选中的那张常读不出来，推荐在“去5号”和“去审讯室”间反复；
     /// 1600 以上三张都读得出，识别只慢三成左右）</summary>
     private (int W, int H, int Dpi) ScreenSize()
@@ -55,7 +55,7 @@ public sealed class Capture : Java.Lang.Object, ImageReader.IOnImageAvailableLis
         var m = new DisplayMetrics();
         wm.DefaultDisplay!.GetRealMetrics(m);
         int w = m.WidthPixels, h = m.HeightPixels;
-        double k = Math.Min(1.0, 1920.0 / Math.Max(w, h));
+        double k = Math.Min(1.0, 1600.0 / Math.Max(w, h));
         return ((int)(w * k) & ~1, (int)(h * k) & ~1, Math.Max(120, (int)((int)m.DensityDpi * k)));
     }
 

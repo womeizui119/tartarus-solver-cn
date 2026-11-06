@@ -8,7 +8,7 @@ public class SettlerTests
 {
     // 一个局面的读数：几项用“|”隔开，和 Pipeline 的局面键同样的形状
     private static string Key(string cell14 = "Rat Magic", string cells = "instigate,bestow", string days = "17", string warden = "1", string cell8 = "Unopened")
-        => $"08: {cell8} | 14: {cell14} | Warden {warden} · Remaining Days {days}|{cells}";
+        => $"08: {cell8} | 14: {cell14} | Warden {warden} · Remaining Days {days}§{cells}";
 
     private static int Changes(Settler s, IEnumerable<string> reads) => reads.Count(s.Feed);
 
@@ -121,5 +121,28 @@ public class SettlerTests
         int changes = Changes(s, new[] { "none", "none", "none" });
         Assert.Equal(1, changes);
         Assert.Equal("none", s.Committed);
+    }
+
+    [Fact]
+    public void Cards_coming_out_are_followed_within_three_reads()
+    {
+        // 换完以后：棋盘不变，只多出“吃 / 结束”两张卡（2026-11-06 华为实机：等了 16 秒）
+        var s = new Settler();
+        var waiting = Key(cells: "");
+        s.Feed(waiting); s.Feed(waiting); s.Feed(waiting); s.Feed(waiting);
+        var decision = Key(cells: "consume,end");
+        Assert.False(s.Feed(decision));
+        Assert.False(s.Feed(decision));
+        Assert.True(s.Feed(decision));
+    }
+
+    [Fact]
+    public void Cards_flickering_between_two_readings_keep_the_position()
+    {
+        var s = new Settler();
+        s.Feed(Key(cells: "consume,replace,end")); s.Feed(Key(cells: "consume,replace,end"));
+        var a = Key(cells: "consume,replace,end");
+        var b = Key(cells: "consume,end");
+        Assert.Equal(0, Changes(s, new[] { b, a, b, a, a, b, a, b, a }));
     }
 }
