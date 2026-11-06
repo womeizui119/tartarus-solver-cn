@@ -23,6 +23,9 @@ public sealed class Pipeline : IDisposable
     private DateTime _lastTrace;
     private EditableSandbox? _sticky;
     private EditableSandbox? _lastBoard;
+    /// <summary>整局的记忆（和电脑版同一套）：刑具栏、绮彩数、天数。一帧认不出就沿用之前认出的；天数变多算新的一局。
+    /// 2026-11-06 两台实机整局 190 次识别刑具栏全是 ?/hidden，推算不知道手上有什么刑具，推荐就偏。</summary>
+    private readonly RunMemory _run = new();
     private ScreenText? _lastText, _textBeforeRed;
     private int? _lastDays, _consumedDay;
     private (int Warden, int? Days, EditableSandbox Board, ScreenText? Text)? _huntOffer;
@@ -118,8 +121,13 @@ public sealed class Pipeline : IDisposable
         _sticky = board.Clone();
         var live = _live?.Invoke();
         if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
+        _run.Days(board.Days);
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
+        // 刑具栏和绮彩数：用整局记住的，不只看这一帧（被挡住、动画、没认出都沿用之前的）
+        board.Instruments = [.. _run.Instruments(r.Instruments?.Instruments.Select(x => x.Id).ToList() ?? [])];
+        board.MarksByInstruments();
+        board.Chromatic = _run.ChromaticCount(board.Chromatic, r.Chromatic?.Covered == true, DateTimeOffset.Now);
 
         // 同一个局面读到两次才算数（最近 4 次里有 2 次即可，不必连着：卡牌发光动画会让个别几次读得不一样）
         // 判断“是不是同一个局面”时不看绮彩计数和刑具栏（容易读得忽有忽无，变化时局面本身也会变）
@@ -174,9 +182,18 @@ public sealed class Pipeline : IDisposable
             return;
         }
         _requestedKey = key;
-        var under = _lastBoard;
-        if (pick.Kind == PickRead.Instrument && (under == null || under.Days == 0)) under = EditableSandbox.Empty();
-        var observation = GameObservation.FromPick(pick, under ?? EditableSandbox.Empty(), _lastText);
+        // 审讯室 / 典狱长珍藏：在当前局面上算。只有这一局还没读到过棋盘（开局第一次选刑具）才用空棋盘
+        // （2026-11-06 实机：中途进审讯室时天数一帧没认出（=0）就被换成了第 1 天的空棋盘，推荐全错）
+        var under = _lastBoard?.Clone();
+        if (under == null) under = EditableSandbox.Empty();
+        else
+        {
+            under.Days ??= _lastDays;
+            under.Instruments = [.. _run.Instruments([])];
+            under.MarksByInstruments();
+        }
+        Trace?.Invoke($"选择画面 {pick.Kind}：在 {(ReferenceEquals(under, _lastBoard) ? "空" : "当前")}局面上算 · 第 {under.Days?.ToString() ?? "?"} 天 · 刑具 [{string.Join(",", under.Instruments)}]");
+        var observation = GameObservation.FromPick(pick, under, _lastText);
         if (_hints.Request(observation, consumeOnly: false)) lock (_gate) _hint = null;
         SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
     }
@@ -214,6 +231,9 @@ public sealed class Pipeline : IDisposable
     /// <summary>转屏、重新开始后：忘掉之前读到的一切，从头识别。</summary>
     public void Reset()
     {
+        _run.NewRun();
+        _lastBoard = null;
+        _lastDays = null;
         _kind = null;
         _sticky = null;
         _recent.Clear();
