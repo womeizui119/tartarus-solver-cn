@@ -219,6 +219,9 @@ public sealed partial class ScreenText
     /// <summary>A decision card's kind by its word in any language of the game ("Пожирание": consume); null when like none.</summary>
     public static string? WordKind(string text)
     {
+        // 中文客户端的卡牌字：图标没认出、文字读成“煽动”“扇动 鼬”“赏赐”时也要认得
+        // （2026-11-06 小米实机：审讯室的卡一帧 instigate、一帧“煽动”，认不出的那帧就当不是审讯室，提示在“结束”和“煽动”间来回跳）
+        if (ChineseKind(text) is { } zh) return zh;
         string? best = null;
         double score = 0.75;
         foreach (var (id, kind) in DecisionWords)
@@ -227,6 +230,19 @@ public sealed partial class ScreenText
             if (s > score) (score, best) = (s, kind);
         }
         return best;
+    }
+
+    /// <summary>决策卡的中文字（OCR 常错一两个字，按关键字认）；不是决策卡返回 null。</summary>
+    public static string? ChineseKind(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text.Contains("牢房") || text.Contains("前往") || text.Contains("审讯室")) return null;
+        if (text.Contains("煽") || text.Contains("扇动")) return "instigate";
+        if (text.Contains("赏") || text.Contains("赐")) return "bestow";
+        if (text.Contains("寻猎")) return "hunt";
+        if (text.Contains("结束")) return "end";
+        if (text.Trim() is "换" or "替换") return "replace";
+        if (text.Trim() == "吃") return "consume";
+        return null;
     }
 
     /// <summary>Lowercase letters, digits and single spaces.</summary>

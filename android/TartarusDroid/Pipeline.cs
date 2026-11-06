@@ -31,6 +31,11 @@ public sealed class Pipeline : IDisposable
     private bool _inConsumePick, _consumedToday;
     private (int Warden, int? Days, EditableSandbox Board, ScreenText? Text)? _huntOffer;
     private Hint? _hint;
+    /// <summary>最近几次读到的格子：每格按多数算（2026-11-06 小米实机：14 号一帧 Magic 一帧 Normal，局面一闪就重算，推荐跟着跳）。</summary>
+    private readonly List<CellLabel[]> _cellHist = [];
+    /// <summary>这一局每个目标读到过的最大进度：进度只会涨（“1/4”偶尔读成“0/4”，推荐就从“煽动”变成“结束”）。</summary>
+    private readonly Dictionary<Tartarus.Rules.ObjectiveKind, int> _progress = [];
+    private int _noDecision;
     private string _status = "准备中…";
 
     public event Action<Shown>? Changed;
@@ -120,8 +125,10 @@ public sealed class Pipeline : IDisposable
             if (board.Warden <= 1 && _sticky.Warden > 1) board.Warden = _sticky.Warden;
         }
         _sticky = board.Clone();
+        Vote(board);
         var live = _live?.Invoke();
         if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
+        if (board.Days is int nd && _lastDays is int od && nd > od) _progress.Clear();  // 剩余天数变多：新的一局
         _run.Days(board.Days);
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
@@ -132,7 +139,7 @@ public sealed class Pipeline : IDisposable
 
         // 同一个局面读到两次才算数（最近 4 次里有 2 次即可，不必连着：卡牌发光动画会让个别几次读得不一样）
         // 判断“是不是同一个局面”时不看绮彩计数和刑具栏（容易读得忽有忽无，变化时局面本身也会变）
-        string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "|" + string.Join(",", r.Text?.Cards.Select(c => c.Meaning) ?? []) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
+        string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "|" + CardsKey(r.Text) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
         if (!Stable(key)) return;
         _lastBoard = board.Clone();
         _lastText = r.Text;
@@ -150,9 +157,12 @@ public sealed class Pipeline : IDisposable
 
         if (!consumeOnly && !destinations && !decision)
         {
+            // 卡牌字一帧没读出来不算：连着两次都没有选择才撤下提示（审讯室一闪一闪的根源之一）
+            if (++_noDecision < 3 && _hint != null) return;
             Clear("等待选择画面…");
             return;
         }
+        _noDecision = 0;
         // 今天吃过没有：第一次进“选目标”画面时还没吃；选完目标回到棋盘再出现“选目标”才是连吃
         // （2026-11-06 实机：一进选目标就记成“今天吃过”，推算当成连吃，常常建议“先取消再吃”）
         if (consumeOnly)
@@ -186,6 +196,14 @@ public sealed class Pipeline : IDisposable
         var hb = huntPick ? _huntOffer!.Value.Board.Clone() : board;
         var text = consumeOnly ? _textBeforeRed ?? r.Text : huntPick ? _huntOffer!.Value.Text : r.Text;
         var observation = GameObservation.From(hb, text, 0);
+        if (observation.Objective is { } obj)
+        {
+            int best = Math.Max(observation.ObjectiveProgress, _progress.GetValueOrDefault(obj));
+            _progress[obj] = best;
+            observation.ObjectiveProgress = best;
+        }
+        // 审讯室：卡读出一张就够了（两张一定同时在）
+        if (text?.Cards.Any(c => c.Meaning is "instigate" or "bestow") == true) observation.Interrogation = true;
         observation.ConsumedToday = live != null ? live.ConsumedToday
             : consumeOnly ? _consumedToday                                   // 选目标画面上：进来时判断好的
             : _consumeLeftDay != null && _consumeLeftDay == hb.Days;          // 棋盘上：今天离开过选目标画面 = 今天吃过
@@ -260,10 +278,37 @@ public sealed class Pipeline : IDisposable
         _inConsumePick = _consumedToday = false;
         _kind = null;
         _sticky = null;
+        _cellHist.Clear();
+        _progress.Clear();
+        _noDecision = 0;
         _recent.Clear();
         _changedReads = 0;
         _lastKey = null;
         Clear("识别中…");
+    }
+
+    /// <summary>卡牌部分的“局面键”：审讯室只要读到煽动或赏赐之一就当两张都在；别的卡按读到的意思，多读出的杂字（“送”）去掉。</summary>
+    private static string CardsKey(ScreenText? text)
+    {
+        var m = text?.Cards.Select(c => c.Meaning).ToList() ?? [];
+        if (m.Any(x => x is "instigate" or "bestow")) return "instigate,bestow";
+        return string.Join(",", m.Where(x => x.Length > 1 || x is ScreenText.UnreadCard));
+    }
+
+    /// <summary>每格取最近 4 次里读得最多的样子；一样多时用最新的（真的变了，两次就跟上）。</summary>
+    private void Vote(EditableSandbox board)
+    {
+        _cellHist.Add(board.Cells.Select(c => c.Clone()).ToArray());
+        if (_cellHist.Count > 4) _cellHist.RemoveAt(0);
+        if (_cellHist.Count < 2) return;
+        for (int i = 1; i < 16; i++)
+        {
+            if (board.Cells[i].Covered) continue;
+            string now = SandboxText.CellShort(board.Cells[i]);
+            var groups = _cellHist.Select(h => h[i]).Where(c => !c.Covered).GroupBy(SandboxText.CellShort).ToList();
+            var top = groups.OrderByDescending(g => g.Count()).ThenByDescending(g => g.Key == now).First();
+            if (top.Key != now) board.Cells[i] = top.Last().Clone();
+        }
     }
 
     /// <summary>两次读数是不是同一个局面：按“|”和“·”拆成项，最多允许 1 项不同。</summary>
