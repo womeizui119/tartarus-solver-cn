@@ -18,5 +18,6 @@
     <Compile Include="..\..\src\Tartarus.App\Zh.cs" Link="Droid\Zh.cs" />
     <Compile Include="..\..\android\TartarusDroid\Pipeline.cs" Link="Droid\Pipeline.cs" />
     <Compile Include="..\..\android\TartarusDroid\Names.cs" Link="Droid\Names.cs" />
+    <Compile Include="..\..\android\TartarusDroid\HintBoxes.cs" Link="Droid\HintBoxes.cs" />
   </ItemGroup>
 </Project>

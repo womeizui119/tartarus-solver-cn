@@ -6,7 +6,13 @@ using Tartarus.Vision.Ocr;
 namespace TartarusDroid;
 
 /// <summary>浮窗上显示的内容。</summary>
-public sealed record Shown(string Main, string Detail, string? Extra, bool HasHint, string Status);
+public sealed record Shown(string Main, string Detail, string? Extra, bool HasHint, string Status)
+{
+    /// <summary>要画在游戏画面上的框（录屏画面坐标）和那一帧的大小；没有推荐时为空。</summary>
+    public IReadOnlyList<HintBox> Boxes { get; init; } = [];
+    public int FrameWidth { get; init; }
+    public int FrameHeight { get; init; }
+}
 
 /// <summary>
 /// 一帧画面 → 识别 → 推算 → 浮窗文字。电脑版靠游戏日志判断时机，手机读不到日志，所以这里做了简化：
@@ -48,7 +54,8 @@ public sealed class Pipeline : IDisposable
     public Pipeline(Func<LoggedRun?>? live = null)
     {
         _live = live;
-        var cells = new CnnCellReader(panels: new SlotReader());
+        _slots = new SlotReader();
+        var cells = new CnnCellReader(panels: _slots);
         var presence = SandboxPresence.FindTemplate() is { } t ? SandboxPresence.Load(t) : null;
         _scanner = new LayoutScanner(new OcrEngine(threads: Math.Clamp(Environment.ProcessorCount / 2, 2, 4), gameLanguage: "zh"), cells, presence);
         // 和电脑版一样每个选项 1024 局模拟；手机慢，时间给到 1.5 秒才跑得满（2.4 起局面认定后不再反复重算，有这个时间）
@@ -125,6 +132,7 @@ public sealed class Pipeline : IDisposable
             }
             else _otherKind = 0;
             // 回到认定的画面：提示重新显示（算过的直接用）；等待中的“取消”提示到时间了也在这里放出来
+            if (_settle.Matches(key) || changed) _boxScan = r;
             if (!changed && _settle.Matches(key)) ShowSettled();
             if (b != null && _settle.Matches(key))
             {
@@ -149,6 +157,9 @@ public sealed class Pipeline : IDisposable
     }
 
     private int _otherKind;
+    private readonly SlotReader _slots;
+    /// <summary>当前认定局面最近一帧的识别结果：画框用它的位置（卡牌、牢房在画面上的哪里）。</summary>
+    private ScanResult? _boxScan;
     /// <summary>这一局的目标已经完成（新的一局清掉）。</summary>
     private bool _objectiveDone;
     private Hint? _held;
@@ -417,7 +428,16 @@ public sealed class Pipeline : IDisposable
     {
         Hint? hint;
         lock (_gate) hint = _hint;
-        Changed?.Invoke(Describe(hint, _status));
+        var shown = Describe(hint, _status);
+        if (hint != null && _boxScan is { } scan && shown.HasHint)
+        {
+            try
+            {
+                shown = shown with { Boxes = HintBoxes.For(scan, hint, _slots.ChromaShift < 0 ? -_slots.ChromaShift : 0), FrameWidth = scan.Layout?.Width ?? 0, FrameHeight = scan.Layout?.Height ?? 0 };
+            }
+            catch (Exception) { }
+        }
+        Changed?.Invoke(shown);
     }
 
     /// <summary>推荐写成文字，和电脑版主窗口的“当前推荐”一样。</summary>

@@ -19,6 +19,10 @@ public sealed class Overlay
     private readonly TextView _main, _sub, _autoBtn;
     private readonly WindowManagerLayoutParams _lp;
     private bool _shown, _auto;
+    // 画框的全屏透明层：不接收触摸，点哪里都直接点到游戏上
+    private readonly BoxView _boxes;
+    private readonly WindowManagerLayoutParams _boxLp;
+    private bool _boxShown;
 
     public event Action? SaveClicked, StopClicked;
     public event Action<bool>? AutoSaveChanged;
@@ -71,6 +75,19 @@ public sealed class Overlay
             Y = Dp(8),
         };
         Draggable(_main);
+
+        _boxes = new BoxView(ctx);
+        _boxLp = new WindowManagerLayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent,
+            WindowManagerTypes.ApplicationOverlay,
+            WindowManagerFlags.NotFocusable | WindowManagerFlags.NotTouchable | WindowManagerFlags.LayoutNoLimits | WindowManagerFlags.LayoutInScreen,
+            Format.Translucent)
+        {
+            Gravity = GravityFlags.Top | GravityFlags.Start,
+            X = 0,
+            Y = 0,
+        };
+        if (OperatingSystem.IsAndroidVersionAtLeast(28)) _boxLp.LayoutInDisplayCutoutMode = LayoutInDisplayCutoutMode.ShortEdges;
     }
 
     public void Show(Shown s)
@@ -81,8 +98,35 @@ public sealed class Overlay
         _shown = true;
     }
 
+    /// <summary>屏幕实际大小（含状态栏、刘海区域），和录屏画面是同一块。</summary>
+    private (int W, int H) RealSize()
+    {
+        var m = new Android.Util.DisplayMetrics();
+        _wm.DefaultDisplay!.GetRealMetrics(m);
+        return (m.WidthPixels, m.HeightPixels);
+    }
+
+    private void UpdateBoxes(Shown s)
+    {
+        var (w, h) = RealSize();
+        bool any = s.HasHint && s.Boxes.Count > 0 && s.FrameWidth > 0 && (s.FrameWidth > s.FrameHeight) == (w > h);
+        if (any)
+        {
+            _boxes.Set(s.Boxes, (float)w / s.FrameWidth, (float)h / s.FrameHeight);
+            _boxLp.Width = w;
+            _boxLp.Height = h;
+            if (!_boxShown) { _wm.AddView(_boxes, _boxLp); _boxShown = true; }
+            else _wm.UpdateViewLayout(_boxes, _boxLp);
+        }
+        else
+        {
+            _boxes.Set([], 1, 1);
+        }
+    }
+
     public void Hide()
     {
+        if (_boxShown) { _wm.RemoveView(_boxes); _boxShown = false; }
         if (!_shown) return;
         _wm.RemoveView(_root);
         _shown = false;
@@ -90,6 +134,7 @@ public sealed class Overlay
 
     public void Update(Shown s)
     {
+        try { UpdateBoxes(s); } catch (Exception) { }
         // 推荐：只写几号几号（“去13号牢房”→“去13号”）；没有推荐时灰色小字写状态，让人知道它在工作
         if (s.HasHint)
         {
@@ -164,4 +209,42 @@ public sealed class Overlay
     }
 
     private int Dp(float dp) => (int)(dp * _ctx.Resources!.DisplayMetrics!.Density + 0.5f);
+}
+
+/// <summary>和电脑版一样的绿色框：实线是这一步要点的，虚线是接下来要点的牢房。</summary>
+internal sealed class BoxView : View
+{
+    private readonly Paint _solid, _dashed;
+    private IReadOnlyList<HintBox> _boxes = [];
+    private float _sx = 1, _sy = 1;
+
+    public BoxView(Context ctx) : base(ctx)
+    {
+        float d = ctx.Resources!.DisplayMetrics!.Density;
+        _solid = new Paint(PaintFlags.AntiAlias) { Color = Color.Rgb(90, 235, 125), StrokeWidth = 3.5f * d };
+        _solid.SetStyle(Paint.Style.Stroke);
+        _dashed = new Paint(PaintFlags.AntiAlias) { Color = Color.Rgb(90, 235, 125), StrokeWidth = 2f * d };
+        _dashed.SetStyle(Paint.Style.Stroke);
+        _dashed.SetPathEffect(new DashPathEffect([6 * d, 4 * d], 0));
+    }
+
+    public void Set(IReadOnlyList<HintBox> boxes, float sx, float sy)
+    {
+        _boxes = boxes;
+        (_sx, _sy) = (sx, sy);
+        Invalidate();
+    }
+
+    protected override void OnDraw(Canvas canvas)
+    {
+        base.OnDraw(canvas);
+        float r = 8 * Resources!.DisplayMetrics!.Density;
+        foreach (var b in _boxes)
+        {
+            // 画在格子 / 卡牌的外沿外面一点：尽量不压到识别要看的内容（录屏也会录到这个框）
+            float pad = 3 * Resources!.DisplayMetrics!.Density;
+            var rect = new RectF(b.X0 * _sx - pad, b.Y0 * _sy - pad, b.X1 * _sx + pad, b.Y1 * _sy + pad);
+            canvas.DrawRoundRect(rect, r, r, b.Dashed ? _dashed : _solid);
+        }
+    }
 }
