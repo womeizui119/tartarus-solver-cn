@@ -19,7 +19,10 @@ public sealed class Pipeline : IDisposable
     private readonly HintService _hints;
     private readonly object _gate = new();
 
-    private string? _lastKey, _requestedKey, _kind;
+    /// <summary>认定局面（见 <see cref="Settler"/>）；正在推算 / 已显示的是哪个局面；算过的局面的结果。</summary>
+    private readonly Settler _settle = new();
+    private string? _pendingKey;
+    private readonly Dictionary<string, Hint> _cache = [];
     private DateTime _lastTrace;
     private EditableSandbox? _sticky;
     private EditableSandbox? _lastBoard;
@@ -35,7 +38,6 @@ public sealed class Pipeline : IDisposable
     private readonly List<CellLabel[]> _cellHist = [];
     /// <summary>这一局每个目标读到过的最大进度：进度只会涨（“1/4”偶尔读成“0/4”，推荐就从“煽动”变成“结束”）。</summary>
     private readonly Dictionary<Tartarus.Rules.ObjectiveKind, int> _progress = [];
-    private int _noDecision;
     private string _status = "准备中…";
 
     public event Action<Shown>? Changed;
@@ -53,15 +55,23 @@ public sealed class Pipeline : IDisposable
         _hints = new HintService(playouts: 512, seconds: 0.6);
         _hints.Ready += h =>
         {
-            lock (_gate) _hint = h;
-            Publish();
+            lock (_gate)
+            {
+                // 只认当前认定局面的结果：算完时局面已经换了，就只存进缓存，不显示
+                if (_pendingKey == null) return;
+                if (_cache.Count > 60) _cache.Clear();
+                _cache[_pendingKey] = h;
+                if (_pendingKey != _settle.Committed) return;
+                _hint = h;
+            }
+            SetStatus($"已识别 · {LastScanMs:0} 毫秒");
         };
         _hints.Log += s => Trace?.Invoke("推算：" + s);
         _hints.Failed += ex =>
         {
             Trace?.Invoke("推算出错：" + ex);
-            lock (_gate) _hint = null;
-            _requestedKey = null;
+            lock (_gate) { _hint = null; _pendingKey = null; }
+            _settle.Reset();  // 重新认定后会再算一次
             SetStatus("推算出错：" + ex.GetType().Name + " " + ex.Message);
         };
     }
@@ -88,24 +98,28 @@ public sealed class Pipeline : IDisposable
         }
         try
         {
-            // 画面种类一变（选刑具 ↔ 棋盘 ↔ 没棋盘），上一种画面的推荐和稳定性记录立刻作废
-            // （2026-11-05 实机：选完刑具进棋盘后，“重新随机”挂了整整一局）
-            string kind = r.Ok ? "board" : r.Pick != null ? "pick" : "none";
-            if (kind != _kind)
+            // 每一帧只读出一个“局面键”交给 Settler；局面真的换了（Settler 认定）才重算，读数抖动不撤提示、不重算
+            // （2026-11-06 两台实机：卡字、稀有度、进度一帧一个样，每变一下就重算，推荐一直闪、一直“计算中”）
+            BoardRead? b = null;
+            string key = r.Ok ? (b = ReadBoard(r)).Key
+                : r.Pick is { } p ? "pick|" + p.Kind + "|" + string.Join(",", p.Cards.Select(c => c.Id ?? c.Text))
+                : "none";
+            bool changed = _settle.Feed(key);
+            if (b != null && _settle.Matches(key))
             {
-                _kind = kind;
-                _recent.Clear();
-                _changedReads = 0;
-                if (_requestedKey != null) Clear("识别中…");
-                if (kind != "board") _sticky = null;
+                _lastBoard = b.Board.Clone();
+                _lastText = r.Text;
+                if (b.Decision && !b.ConsumeOnly && !b.HuntPick) _textBeforeRed = r.Text;
             }
-            if (r.Ok) Board(r);
-            else if (r.Pick is { } pick) Pick(pick, r);
-            else
+            if (!changed)
             {
-                _lastKey = null;
-                Clear($"没看到塔罗斯监狱棋盘（{Zh.Reason(r.Reason)}）");
+                if (_settle.Committed == null && !HasHint) SetStatus($"识别中… {LastScanMs:0} 毫秒");
+                return;
             }
+            Trace?.Invoke("认定局面：" + key.Replace("\n", " "));
+            if (b != null) OnBoard(r, b);
+            else if (r.Pick is { } pick) OnPick(pick, key);
+            else Clear($"没看到塔罗斯监狱棋盘（{Zh.Reason(r.Reason)}）");
         }
         catch (Exception ex)
         {
@@ -113,11 +127,14 @@ public sealed class Pipeline : IDisposable
         }
     }
 
-    private void Board(ScanResult r)
+    private sealed record BoardRead(EditableSandbox Board, string Key, bool Decision, bool Destinations, bool ConsumeOnly, bool HuntPick, LoggedRun? Live);
+
+    /// <summary>读一帧棋盘：盖住的格子沿用、每格多数表决、天数/刑具/绮彩用整局记忆，得出局面键和这是什么画面。</summary>
+    private BoardRead ReadBoard(ScanResult r)
     {
         var board = EditableSandbox.FromScan(r);
         // 这一帧被挡住、看不清的格子，沿用上次读到的；守卫标记（会闪）一时没认出也沿用上次的位置
-        // （2026-11-05 实机录屏：15 号格一帧“被挡住”一帧“未开”，守卫位置时有时无，局面一直“变”，红字就不刷新）
+        // （2026-11-05 实机录屏：15 号格一帧“被挡住”一帧“未开”，守卫位置时有时无）
         if (_sticky != null)
         {
             for (int n = 2; n <= 16; n++)
@@ -128,7 +145,7 @@ public sealed class Pipeline : IDisposable
         Vote(board);
         var live = _live?.Invoke();
         if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
-        if (board.Days is int nd && _lastDays is int od && nd > od) _progress.Clear();  // 剩余天数变多：新的一局
+        if (board.Days is int nd && _lastDays is int od && nd > od) { _progress.Clear(); lock (_gate) _cache.Clear(); }  // 剩余天数变多：新的一局
         _run.Days(board.Days);
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
@@ -137,12 +154,8 @@ public sealed class Pipeline : IDisposable
         board.MarksByInstruments();
         board.Chromatic = _run.ChromaticCount(board.Chromatic, r.Chromatic?.Covered == true, DateTimeOffset.Now);
 
-        // 同一个局面读到两次才算数（最近 4 次里有 2 次即可，不必连着：卡牌发光动画会让个别几次读得不一样）
-        // 判断“是不是同一个局面”时不看绮彩计数和刑具栏（容易读得忽有忽无，变化时局面本身也会变）
+        // 局面键不看绮彩计数和刑具栏（容易读得忽有忽无，变化时局面本身也会变）
         string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "|" + CardsKey(r.Text) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
-        if (!Stable(key)) return;
-        _lastBoard = board.Clone();
-        _lastText = r.Text;
 
         bool destinations = board.Phase == Phases.Destination && board.Destinations.Count > 0;
         bool decision = r.Text?.Cards.Any(c => c.Meaning is var t
@@ -154,45 +167,34 @@ public sealed class Pipeline : IDisposable
         var here = board.Warden > 1 ? board[board.Warden] : null;
         bool endOnly = r.Text?.Cards is { Count: > 0 } cards && cards.All(c => c.Meaning is "end" || c.Meaning.EndsWith(" end"));
         if (decision && !consumeOnly && r.Text?.RatwayPick != true && here != null && here.Kind != CellKind.Inmate && !endOnly) decision = false;
+        return new BoardRead(board, key, decision, destinations, consumeOnly, huntPick, live);
+    }
 
-        if (!consumeOnly && !destinations && !decision)
-        {
-            // 卡牌字一帧没读出来不算：连着两次都没有选择才撤下提示（审讯室一闪一闪的根源之一）
-            if (++_noDecision < 3 && _hint != null) return;
-            Clear("等待选择画面…");
-            return;
-        }
-        _noDecision = 0;
+    /// <summary>认定了一个新的棋盘局面：要选择就推算（算过的直接用），不用选择就撤下提示。</summary>
+    private void OnBoard(ScanResult r, BoardRead b)
+    {
+        var board = b.Board;
+        bool consumeOnly = b.ConsumeOnly, huntPick = b.HuntPick;
         // 今天吃过没有：第一次进“选目标”画面时还没吃；选完目标回到棋盘再出现“选目标”才是连吃
         // （2026-11-06 实机：一进选目标就记成“今天吃过”，推算当成连吃，常常建议“先取消再吃”）
         if (consumeOnly)
         {
             if (!_inConsumePick)
             {
-                // 刚进选目标画面：上一次离开选目标画面时，如果是同一天，说明今天已经吃过一次了
                 _consumedToday = _consumeLeftDay != null && _consumeLeftDay == board.Days;
                 _inConsumePick = true;
             }
         }
-        else
+        else if (_inConsumePick)
         {
-            if (_inConsumePick)
-            {
-                // 离开了选目标画面（选完了）：记下这一天
-                _inConsumePick = false;
-                _consumeLeftDay = _lastDays ?? board.Days;
-            }
-            if (!huntPick) _textBeforeRed = r.Text;
+            _inConsumePick = false;
+            _consumeLeftDay = _lastDays ?? board.Days;
         }
-
-        // 同一个局面只推算一次：之后的帧里 OCR 的细小差别（比如读到了浮窗上的字）不会让推算一次次重来、永远算不完
-        // （2026-11-05 实机：一直停在“计算中…”，切屏才恢复）
-        if (key == _requestedKey)
+        if (!consumeOnly && !b.Destinations && !b.Decision)
         {
-            SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
+            Show(null, "等待选择画面…");
             return;
         }
-        _requestedKey = key;
         var hb = huntPick ? _huntOffer!.Value.Board.Clone() : board;
         var text = consumeOnly ? _textBeforeRed ?? r.Text : huntPick ? _huntOffer!.Value.Text : r.Text;
         var observation = GameObservation.From(hb, text, 0);
@@ -204,24 +206,16 @@ public sealed class Pipeline : IDisposable
         }
         // 审讯室：卡读出一张就够了（两张一定同时在）
         if (text?.Cards.Any(c => c.Meaning is "instigate" or "bestow") == true) observation.Interrogation = true;
-        observation.ConsumedToday = live != null ? live.ConsumedToday
+        observation.ConsumedToday = b.Live != null ? b.Live.ConsumedToday
             : consumeOnly ? _consumedToday                                   // 选目标画面上：进来时判断好的
             : _consumeLeftDay != null && _consumeLeftDay == hb.Days;          // 棋盘上：今天离开过选目标画面 = 今天吃过
         observation.ChainGoesOn = observation.ConsumedToday == true && consumeOnly;
-        if (_hints.Request(observation, consumeOnly, huntPick)) lock (_gate) _hint = null;
-        SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
+        Request(b.Key, observation, consumeOnly, huntPick);
     }
 
-    private void Pick(PickRead pick, ScanResult r)
+    /// <summary>认定了选刑具 / 典狱长珍藏画面。</summary>
+    private void OnPick(PickRead pick, string key)
     {
-        string key = "pick|" + pick.Kind + "|" + string.Join(",", pick.Cards.Select(c => c.Id ?? c.Text));
-        if (!Stable(key)) return;
-        if (key == _requestedKey)
-        {
-            SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
-            return;
-        }
-        _requestedKey = key;
         // 审讯室 / 典狱长珍藏：在当前局面上算。只有这一局还没读到过棋盘（开局第一次选刑具）才用空棋盘
         // （2026-11-06 实机：中途进审讯室时天数一帧没认出（=0）就被换成了第 1 天的空棋盘，推荐全错）
         var under = _lastBoard?.Clone();
@@ -232,40 +226,39 @@ public sealed class Pipeline : IDisposable
             under.Instruments = [.. _run.Instruments([])];
             under.MarksByInstruments();
         }
-        Trace?.Invoke($"选择画面 {pick.Kind}：在 {(ReferenceEquals(under, _lastBoard) ? "空" : "当前")}局面上算 · 第 {under.Days?.ToString() ?? "?"} 天 · 刑具 [{string.Join(",", under.Instruments)}]");
+        Trace?.Invoke($"选择画面 {pick.Kind}：在 {(_lastBoard == null ? "空" : "当前")}局面上算 · 第 {under.Days?.ToString() ?? "?"} 天 · 刑具 [{string.Join(",", under.Instruments)}]");
         var observation = GameObservation.FromPick(pick, under, _lastText);
-        if (_hints.Request(observation, consumeOnly: false)) lock (_gate) _hint = null;
-        SetStatus(_hint == null ? "计算中…" : $"已识别 · {LastScanMs:0} 毫秒");
+        Request(key, observation, consumeOnly: false, huntOnly: false);
     }
 
-    private readonly List<string> _recent = [];
-    private int _changedReads;
-
-    /// <summary>
-    /// 这次读到的局面算不算稳定：最近 4 次里出现过 2 次。不稳定时，若已经和上次推算的局面不同了（走了一步），
-    /// 连着两次不同就先把上一步的推荐撤下，改显示“识别中…”，免得一直挂着过时的红字
-    /// （2026-11-05 实机：走一步后红字不刷新，要回主界面再进来才变）。
-    /// </summary>
-    private bool Stable(string key)
+    /// <summary>推算一个认定的局面。这个局面算过就直接用上次的结果（读数在两个局面间来回时不再重算）。</summary>
+    private void Request(string key, Observation observation, bool consumeOnly, bool huntOnly)
     {
-        _recent.Add(key);
-        if (_recent.Count > 4) _recent.RemoveAt(0);
-        _lastKey = key;
-        // 和正在推算的局面“差不多”（最多差 1 项）就当同一个：实时录屏每帧都有闪动的东西，逐字相同凑不齐
-        // （2026-11-06 实机：一直停在“识别中”，我这边用同一张图测永远复现不了）
-        if (_requestedKey != null && Close(key, _requestedKey)) { _changedReads = 0; return true; }
-        if (_requestedKey != null && ++_changedReads >= 2)
+        Hint? cached;
+        lock (_gate)
         {
-            _changedReads = 0;
-            _requestedKey = null;
-            _hints.Clear();
-            lock (_gate) _hint = null;
+            _pendingKey = key;
+            _cache.TryGetValue(key, out cached);
+            _hint = cached;
         }
-        int alike = _recent.Count(k => Close(k, key));
-        if (alike >= 2) return true;
-        Trace?.Invoke($"识别中：最近 {_recent.Count} 次里相近的 {alike} 次 · {key}");
-        SetStatus($"识别中… {LastScanMs:0} 毫秒");
-        return false;
+        if (cached != null)
+        {
+            SetStatus($"已识别 · {LastScanMs:0} 毫秒");
+            return;
+        }
+        // HintService 认为“同一个局面已经算过”时不会再报结果：先忘掉再算，保证这次一定有结果
+        if (!_hints.Request(observation, consumeOnly, huntOnly))
+        {
+            _hints.Clear();
+            if (!_hints.Request(observation, consumeOnly, huntOnly)) { SetStatus("暂无"); return; }
+        }
+        SetStatus("计算中…");
+    }
+
+    private void Show(Hint? hint, string status)
+    {
+        lock (_gate) { _hint = hint; _pendingKey = null; }
+        SetStatus(status);
     }
 
     /// <summary>转屏、重新开始后：忘掉之前读到的一切，从头识别。</summary>
@@ -276,14 +269,11 @@ public sealed class Pipeline : IDisposable
         _lastDays = null;
         _consumeLeftDay = null;
         _inConsumePick = _consumedToday = false;
-        _kind = null;
         _sticky = null;
         _cellHist.Clear();
         _progress.Clear();
-        _noDecision = 0;
-        _recent.Clear();
-        _changedReads = 0;
-        _lastKey = null;
+        _settle.Reset();
+        lock (_gate) _cache.Clear();
         Clear("识别中…");
     }
 
@@ -311,23 +301,10 @@ public sealed class Pipeline : IDisposable
         }
     }
 
-    /// <summary>两次读数是不是同一个局面：按“|”和“·”拆成项，最多允许 1 项不同。</summary>
-    private static bool Close(string a, string b)
-    {
-        if (a == b) return true;
-        var xa = a.Split('|', '·'); var xb = b.Split('|', '·');
-        if (xa.Length != xb.Length) return false;
-        int diff = 0;
-        for (int i = 0; i < xa.Length; i++) if (xa[i].Trim() != xb[i].Trim() && ++diff > 1) return false;
-        return true;
-    }
-
     private void Clear(string status)
     {
-        _requestedKey = null;
         _hints.Clear();
-        lock (_gate) _hint = null;
-        SetStatus(status);
+        Show(null, status);
     }
 
     private void SetStatus(string s)
