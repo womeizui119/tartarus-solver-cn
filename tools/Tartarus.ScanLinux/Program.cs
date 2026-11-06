@@ -7,6 +7,7 @@ Console.OutputEncoding = System.Text.Encoding.UTF8;
 if (args.Length < 2) { Console.Error.WriteLine("usage: scan|sim <file>... [--lang zh]"); return 1; }
 if (args[0] == "sim") return Sim.Run(args[1..], Opt, MakeScanner);
 if (args[0] == "droid") return DroidTest.Run(args[1..]);
+if (args[0] == "loop") { Tartarus.ScanLinux.LoopSim.Run(args[1], args[2]); return 0; }
 using var scanner = MakeScanner(args);
 foreach (var f in args[1..].TakeWhile(a => !a.StartsWith("--")))
 {

@@ -25,9 +25,7 @@ public sealed class SolverService : Service
     public static SolverService? Running { get; private set; }
 
     private MediaProjection? _projection;
-    private VirtualDisplay? _display;
-    private ImageReader? _reader;
-    private int _w, _h;
+    private Capture? _capture;
     private Overlay? _overlay;
     private Pipeline? _pipeline;
     private Thread? _worker;
@@ -68,7 +66,7 @@ public sealed class SolverService : Service
         _overlay.StopClicked += StopAll;
 
 
-        CreateDisplay();
+        _capture = new Capture(this, _projection, s => Saver.Log(this, s));
         _worker = new Thread(Work) { IsBackground = true, Name = "solver" };
         _worker.Start();
         return StartCommandResult.NotSticky;
@@ -92,60 +90,6 @@ public sealed class SolverService : Service
             StartForeground(NotificationId, n);
     }
 
-    /// <summary>录屏画面的大小（横竖屏会变）；长边最多 1280：识别不看分辨率，画面小一半，内存和耗时都省很多
-    /// （2026-11-05：2868×1320 的手机按原尺寸录，每张 15MB，一秒四张，几步后被系统杀掉）。</summary>
-    private (int W, int H, int Dpi) ScreenSize()
-    {
-        var wm = Android.Runtime.Extensions.JavaCast<IWindowManager>(GetSystemService(WindowService))!;
-        var m = new DisplayMetrics();
-        wm.DefaultDisplay!.GetRealMetrics(m);
-        int w = m.WidthPixels, h = m.HeightPixels;
-        double k = Math.Min(1.0, 1280.0 / Math.Max(w, h));  // 1280 宽的画面实测照样认得准，识别更快
-        return ((int)(w * k) & ~1, (int)(h * k) & ~1, Math.Max(120, (int)((int)m.DensityDpi * k)));
-    }
-
-    private void CreateDisplay()
-    {
-        var (w, h, dpi) = ScreenSize();
-        Saver.Log(this, $"录屏画面 {w}×{h}");
-        (_w, _h) = (w, h);
-        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1 /* RGBA_8888 */, 4);
-        _display = _projection!.CreateVirtualDisplay("tartarus", w, h, dpi, (DisplayFlags)16 /* VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR：镜像整个屏幕 */, _reader.Surface, null, null);
-    }
-
-    private int _rebuilds;
-    private DateTime _lastGrabTrace;
-
-    /// <summary>重建录屏通道（换一个新的画面接收器），逼系统重新推画面。</summary>
-    private void Rebuild()
-    {
-        var (w, h, dpi) = ScreenSize();
-        var old = _reader;
-        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1, 4);
-        _display!.Resize(w, h, dpi);
-        _display.Surface = _reader.Surface;
-        (_w, _h) = (w, h);
-        old?.Close();
-        _lastFrame = null;
-    }
-
-    /// <summary>转屏后跟着改大小（同一个授权只能建一次虚拟屏幕，所以改大小而不是重建）。</summary>
-    private void FollowRotation()
-    {
-        var (w, h, dpi) = ScreenSize();
-        if (w == _w && h == _h) return;
-        Saver.Log(this, $"转屏：录屏画面 {_w}×{_h} → {w}×{h}");
-        var old = _reader;
-        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1, 4);
-        _display!.Resize(w, h, dpi);
-        _display.Surface = _reader.Surface;
-        (_w, _h) = (w, h);
-        old?.Close();
-        // 转屏前的旧帧作废，识别状态清零（2026-11-06 实机：切桌面再回游戏后，旧的竖屏帧被反复识别，一直“请横屏”/“识别中”）
-        _lastFrame = null;
-        _pipeline?.Reset();
-    }
-
     private void Work()
     {
         try
@@ -163,33 +107,40 @@ public sealed class SolverService : Service
             Log.Error("tartarus", ex.ToString());
             return;
         }
+        long seen = 0;
+        DateTime lastTrace = DateTime.MinValue, staleSince = DateTime.MinValue;
         while (!_stop)
         {
             var started = DateTime.Now;
             try
             {
-                FollowRotation();
-                var frame = Grab();
-                if (DateTime.Now - _lastGrabTrace > TimeSpan.FromSeconds(1))
+                var cap = _capture!;
+                if (cap.FollowRotation()) { _pipeline.Reset(); seen = 0; }
+                var (frame, age, isNew) = cap.Latest(ref seen);
+                var (sw, sh) = cap.Size;
+                if (DateTime.Now - lastTrace > TimeSpan.FromSeconds(1))
                 {
-                    _lastGrabTrace = DateTime.Now;
-                    Saver.Log(this, frame == null ? $"没拿到新帧（上一帧 {(DateTime.Now - _lastFrameAt).TotalSeconds:0.0} 秒前）" : $"拿到帧 {frame.Width}×{frame.Height}");
+                    lastTrace = DateTime.Now;
+                    Saver.Log(this, frame == null ? "还没有画面" : $"画面 {frame.Width}×{frame.Height}{(isNew ? " 新" : $" {age:0.0} 秒前")} · 共 {cap.Frames} 帧 · 出错 {cap.Errors}");
                 }
-                // 帧的方向和屏幕对不上（转屏那一瞬间残留的）直接丢掉
-                if (frame != null && (frame.Width > frame.Height) != (_w > _h)) frame = null;
-                // 画面静止时录屏不推新帧（切天过场之后、棋盘不动时都是这样），拿不到新帧就重复识别上一帧：
-                // 静止画面正是识别最准的时候（2026-11-06 实机：每结束一天就停住，切屏强制重绘后才恢复）
-                // 已经给出推荐的静止画面，重复识别多久都行；还没给出推荐的，2 秒后就重建录屏通道试试
-                // 拿不到新帧时重复识别上一帧（静止画面本来就不推新帧）；但不论有没有推荐，5 秒没新帧都重建一次通道，
-                // 免得帧流其实已经断了还一直当成“静止”（2026-11-06 记录：选刑具后“没拿到新帧”从 0.4 秒一路涨到 9.9 秒）
-                bool settled = _pipeline?.HasHint == true;
-                double idle = (DateTime.Now - _lastFrameAt).TotalSeconds;
-                if (frame == null && _lastFrame != null && idle < (settled ? 5 : 2)) frame = _lastFrame;
-                if (frame != null)
+                if (frame == null)
                 {
-                    if (!ReferenceEquals(frame, _lastFrame)) { _lastFrame = frame; _lastFrameAt = DateTime.Now; }
-                    // 先存图再识别：识别出错也照样存（出问题的画面正是最需要的）
-                    if (AutoSave && DateTime.Now - _lastAutoSave > TimeSpan.FromSeconds(3)) Save(manual: false);
+                    // 开始后一直没有任何画面：5 秒还没有就重建一次通道；20 秒还没有提示玩家
+                    if (staleSince == DateTime.MinValue) staleSince = DateTime.Now;
+                    double wait = (DateTime.Now - staleSince).TotalSeconds;
+                    if (wait > 5 && wait < 6) cap.Rebuild();
+                    if (wait > 20) Post(new Shown("没拿到画面", "屏幕录制没有画面传过来：请停止后重新打开，录屏弹窗里选“整个屏幕”", null, false, "无画面"));
+                }
+                else if ((frame.Width > frame.Height) != (sw > sh))
+                {
+                    // 方向和屏幕对不上：转屏瞬间的残留，等下一帧
+                }
+                else
+                {
+                    staleSince = DateTime.MinValue;
+                    _lastFrame = frame;
+                    // 画面静止时系统不推新帧，这是正常的：照样拿最新一帧反复识别（静止画面正是识别最准的时候）
+                    if (AutoSave && isNew && DateTime.Now - _lastAutoSave > TimeSpan.FromSeconds(3)) Save(manual: false);
                     if (frame.Width < frame.Height) Post(new Shown("请横屏", "游戏要横屏玩，求解器才能看清棋盘", null, false, "竖屏"));
                     else if (IsBlack(frame)) Post(new Shown("画面是黑的", "录屏只录到黑屏：请停止后重新打开，录屏弹窗里选“整个屏幕”；若仍是黑屏，可能是手机或游戏禁止录屏", null, false, "黑屏"));
                     else
@@ -206,88 +157,16 @@ public sealed class SolverService : Service
                         }
                     }
                 }
-                else if (idle > (settled ? 5 : 2))
-                {
-                    // 拿不到任何可用帧：主动把录屏通道重建一遍，让系统重新推画面（以前只能靠玩家切屏）
-                    Saver.Log(this, $"{idle:0} 秒没有新画面，重建录屏通道");
-                    Rebuild();
-                    _lastFrameAt = DateTime.Now;
-                    if (++_rebuilds >= 5)
-                    {
-                        _rebuilds = 0;
-                        Post(new Shown("没拿到画面", "屏幕录制没有画面传过来：请停止后重新打开，并在弹窗里选“整个屏幕”", null, false, "无画面"));
-                    }
-                }
             }
             catch (Exception ex)
             {
                 Log.Error("tartarus", ex.ToString());
             }
-            // 基本连着看（每轮至少隔 0.06 秒，给游戏喘口气）：走一步后两次读数约 0.3～0.4 秒就能凑齐
-            var rest = TimeSpan.FromMilliseconds(60) - (DateTime.Now - started);
+            // 每轮至少隔 0.1 秒：识别本身约 0.1～0.3 秒，走一步后 0.5 秒内就能凑齐两次读数
+            var rest = TimeSpan.FromMilliseconds(100) - (DateTime.Now - started);
             if (rest > TimeSpan.Zero) Thread.Sleep(rest);
         }
     }
-
-    /// <summary>
-    /// 取最新一帧，按行拷出来（每行末尾可能有对齐用的空字节）。
-    /// 缓冲区要 4 张：AcquireLatestImage 内部先取再丢，只给 2 张时槽位很快占满，系统就不再推新帧——
-    /// 这正是“不切屏永远识别中、切屏（系统重置缓冲）才出一次”的原因（2026-11-06 实机）。
-    /// 拿到后立刻拷走、立刻关掉，不让槽位被识别过程占着。
-    /// </summary>
-    private Frame? Grab()
-    {
-        // 取最新一帧：把积压的全取出来，只留最新一张。关键是取出来的每一张在任何情况下都必须关掉，
-        // 否则槽位泄漏，几轮后 4 个全被占着，系统再也推不进新帧（2026-11-06 荣耀实机记录：
-        // “maxImages (4) has already been acquired” 刷了几百行，正是从第一版起“不切屏就卡死”的根源）。
-        Android.Media.Image? newest = null;
-        try
-        {
-            for (int i = 0; i < 8; i++)
-            {
-                Android.Media.Image? next;
-                try { next = _reader?.AcquireNextImage(); }
-                catch (Java.Lang.IllegalStateException) { break; }  // 没有更多了 / 槽位状态异常：用手里已有的
-                if (next == null) break;
-                newest?.Close();
-                newest = next;
-            }
-            if (newest == null) return null;
-            var plane = newest.GetPlanes()![0];
-            var buffer = plane.Buffer!;
-            int w = newest.Width, h = newest.Height, rowStride = plane.RowStride, pixelStride = plane.PixelStride;
-            var pixels = new byte[w * h * 4];
-            var row = new byte[rowStride];
-            buffer.Rewind();
-            for (int y = 0; y < h; y++)
-            {
-                int len = Math.Min(rowStride, buffer.Remaining());
-                buffer.Get(row, 0, len);
-                if (pixelStride == 4) Buffer.BlockCopy(row, 0, pixels, y * w * 4, w * 4);
-                else for (int x = 0; x < w; x++) Buffer.BlockCopy(row, x * pixelStride, pixels, (y * w + x) * 4, 4);
-            }
-            _grabFails = 0;
-            return new Frame(w, h, pixels, Tartarus.Vision.PixelFormat.Rgba32);
-        }
-        catch (Exception ex)
-        {
-            Log.Error("tartarus", ex.ToString());
-            // 连续多次取不到：槽位可能已经被系统侧占死，重建整个接收器是唯一可靠的清法
-            if (++_grabFails >= 10)
-            {
-                Saver.Log(this, "取帧连续失败：" + ex.Message + "，重建录屏通道");
-                _grabFails = 0;
-                Rebuild();
-            }
-            return null;
-        }
-        finally
-        {
-            newest?.Close();  // 无论成功失败，取出来的那张一定还回去
-        }
-    }
-
-    private int _grabFails;
 
     private void Save(bool manual)
     {
@@ -333,7 +212,7 @@ public sealed class SolverService : Service
         return n > 0 && sum / (3.0 * n) < 4;
     }
 
-    private DateTime _lastFrameAt = DateTime.Now, _lastSaveError = DateTime.MinValue;
+    private DateTime _lastSaveError = DateTime.MinValue;
     private int _savedCount;
 
     private void Post(Shown s) => _ui.Post(() => _overlay?.Update(s));
@@ -345,7 +224,7 @@ public sealed class SolverService : Service
         {
             _overlay?.Hide();
             _overlay = null;
-            _display?.Release();
+            _capture?.Stop();
             _projection?.Stop();
             _projection = null;
             StopForeground(StopForegroundFlags.Remove);
@@ -357,9 +236,8 @@ public sealed class SolverService : Service
     {
         _stop = true;
         _overlay?.Hide();
-        _display?.Release();
+        _capture?.Stop();
         _projection?.Stop();
-        _reader?.Close();
         Running = null;
         Task.Run(() =>
         {
