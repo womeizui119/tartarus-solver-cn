@@ -4,6 +4,12 @@ The version is in `Directory.Build.props` (`<Version>`), shown in the app's wind
 number goes up with every build handed out with fixes or changed behaviour, the middle one with a bigger set of new
 things.
 
+## 0.7.45 — 2026-11-06
+
+- A Re-roll that brings the same three cards back no longer leaves the pick without a hint.
+- One app at a time: starting it again brings the running one's window to the front (two or three running at once fought over the hotkeys and the overlay).
+- "Choose the game's language" (on the overlay and in the Game language window) is asked in the interface's language alone, no longer in all 13 (the window lists each language by its own name): loading them all stood the app still for 30 s on some PCs, at start.
+
 ## 0.7.44 — 2026-11-04
 
 - Updates: a download cut off goes on from where it stopped, by itself while tries bring bytes, and at the next press of Update or after a restart; a stalled connection is given up after 30 s.

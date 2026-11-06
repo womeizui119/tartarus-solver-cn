@@ -403,9 +403,9 @@ public partial class ControlWindow : Window
     private string? _unreadLanguage;
     // The game's text doesn't read in the language taken, until a frame's does: the overlay says so.
     private bool _textUnread;
-    // In every language of the game: which one the player reads is what isn't known.
-    private static readonly string LanguageAsk = Strings.Language_Title + "\n"
-        + string.Join("\n", Tartarus.Vision.Ocr.OcrPacks.GameLanguages.Select(code => Loc.In(code, nameof(Strings.Language_Choose))));
+    // In the interface's language alone (the player's choice, else Windows's). Once in all 13: each a satellite assembly, loaded
+    // at start (2026-11-06: start hangs of 31 s loading the 12 others, Windows 11 26200/26300).
+    private static string LanguageAsk => Strings.Language_Title + "\n" + Strings.Language_Choose;
     // Languages the player was asked about this session: not asked again until the next start.
     private readonly HashSet<string> _askedLanguage = [];
     // No language chosen and asked this session: "Not now" asks again at the next start.
@@ -753,7 +753,7 @@ public partial class ControlWindow : Window
     private (string Kind, List<string> Ids)? _lastWholePick;
     // The run's Re-rolls clicked as last seen in the log, and the cards a Re-roll is taking away (until others come).
     private (LoggedRun Run, int Used)? _rerollsSeen;
-    private List<string>? _rerolledCards;
+    private readonly RerolledCards _rerolledCards = new();
     // The last Sandbox read before the Consume target pick's red screen.
     private Vision.Ocr.ScreenText? _textBeforeRed;
     private int? _daysBeforeRed;
@@ -1418,14 +1418,13 @@ public partial class ControlWindow : Window
                 // 4 s after the best one was clicked).
                 var known = pick.Cards.Where(c => c.Id != null).Select(c => c.Id!).ToList();
                 // A Re-roll clicked (the log): the cards on screen go a moment later, and a hint on them would flash
-                // (2026-11-01: one of the old three hinted after the click). None until other cards come.
+                // (2026-11-01: one of the old three hinted after the click). None until the new offer comes (RerolledCards).
                 if (_logRun is { } rerun && (_rerollsSeen is not { } seenRun || seenRun.Run != rerun || seenRun.Used != rerun.RerollsUsed))
                 {
-                    if (_rerollsSeen is { } was && was.Run == rerun && rerun.RerollsUsed > was.Used && _lastWholePick is { } before) _rerolledCards = before.Ids;
+                    if (_rerollsSeen is { } was && was.Run == rerun && rerun.RerollsUsed > was.Used && _lastWholePick is { } before) _rerolledCards.Clicked(before.Ids, DateTime.UtcNow);
                     _rerollsSeen = (rerun, rerun.RerollsUsed);
                 }
-                bool rerolling = _rerolledCards is { } gone && known.Count > 0 && known.All(gone.Contains);
-                if (!rerolling) _rerolledCards = null;
+                bool rerolling = _rerolledCards.StillGoing(known, pick.Cards.Count, DateTime.UtcNow);
                 bool cardLost = known.Count < pick.Cards.Count && _lastWholePick is { } whole && whole.Kind == pick.Kind && known.All(whole.Ids.Contains);
                 if (known.Count == pick.Cards.Count) _lastWholePick = (pick.Kind, known);
                 // No pick hint on an old Sandbox: the eye button first.

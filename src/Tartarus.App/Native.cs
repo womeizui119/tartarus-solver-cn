@@ -40,6 +40,10 @@ internal static class Native
     [DllImport("user32.dll")] public static extern bool SetWindowDisplayAffinity(IntPtr h, uint affinity);
     [DllImport("user32.dll")] public static extern bool SetLayeredWindowAttributes(IntPtr h, uint key, byte alpha, uint flags);
     public const uint LWA_ALPHA = 0x2;
+    public const int SW_RESTORE = 9;
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
 
     public const uint GUI_INMOVESIZE = 2, GUI_INMENUMODE = 4, GUI_SYSTEMMENUMODE = 8, GUI_POPUPMENUMODE = 0x10;
 
