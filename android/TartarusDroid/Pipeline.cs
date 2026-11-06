@@ -60,6 +60,8 @@ public sealed class Pipeline : IDisposable
     public event Action<string>? Trace;
 
     public ScanResult? LastScan { get; private set; }
+    /// <summary>当前有推荐在显示（画面静止时不用重建录屏）。</summary>
+    public bool HasHint { get { lock (_gate) return _hint is { Ranked.Count: > 0 }; } }
     public double LastScanMs { get; private set; }
 
     public void Process(Frame frame)
@@ -196,6 +198,17 @@ public sealed class Pipeline : IDisposable
         if (_recent.Count(k => k == key) >= 2) return true;
         SetStatus($"识别中… {LastScanMs:0} 毫秒");
         return false;
+    }
+
+    /// <summary>转屏、重新开始后：忘掉之前读到的一切，从头识别。</summary>
+    public void Reset()
+    {
+        _kind = null;
+        _sticky = null;
+        _recent.Clear();
+        _changedReads = 0;
+        _lastKey = null;
+        Clear("识别中…");
     }
 
     private void Clear(string status)

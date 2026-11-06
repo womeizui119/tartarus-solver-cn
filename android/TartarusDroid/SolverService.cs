@@ -114,16 +114,35 @@ public sealed class SolverService : Service
     }
 
     /// <summary>转屏后跟着改大小（同一个授权只能建一次虚拟屏幕，所以改大小而不是重建）。</summary>
-    private void FollowRotation()
+    private int _rebuilds;
+
+    /// <summary>重建录屏通道（换一个新的画面接收器），逼系统重新推画面。</summary>
+    private void Rebuild()
     {
         var (w, h, dpi) = ScreenSize();
-        if (w == _w && h == _h) return;
         var old = _reader;
         _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1, 2);
         _display!.Resize(w, h, dpi);
         _display.Surface = _reader.Surface;
         (_w, _h) = (w, h);
         old?.Close();
+        _lastFrame = null;
+    }
+
+    private void FollowRotation()
+    {
+        var (w, h, dpi) = ScreenSize();
+        if (w == _w && h == _h) return;
+        Saver.Log(this, $"转屏：录屏画面 {_w}×{_h} → {w}×{h}");
+        var old = _reader;
+        _reader = ImageReader.NewInstance(w, h, (ImageFormatType)1, 2);
+        _display!.Resize(w, h, dpi);
+        _display.Surface = _reader.Surface;
+        (_w, _h) = (w, h);
+        old?.Close();
+        // 转屏前的旧帧作废，识别状态清零（2026-11-06 实机：切桌面再回游戏后，旧的竖屏帧被反复识别，一直“请横屏”/“识别中”）
+        _lastFrame = null;
+        _pipeline?.Reset();
     }
 
     private void Work()
@@ -150,9 +169,13 @@ public sealed class SolverService : Service
             {
                 FollowRotation();
                 var frame = Grab();
+                // 帧的方向和屏幕对不上（转屏那一瞬间残留的）直接丢掉
+                if (frame != null && (frame.Width > frame.Height) != (_w > _h)) frame = null;
                 // 画面静止时录屏不推新帧（切天过场之后、棋盘不动时都是这样），拿不到新帧就重复识别上一帧：
                 // 静止画面正是识别最准的时候（2026-11-06 实机：每结束一天就停住，切屏强制重绘后才恢复）
-                if (frame == null && _lastFrame != null && DateTime.Now - _lastFrameAt < TimeSpan.FromSeconds(30)) frame = _lastFrame;
+                // 已经给出推荐的静止画面，重复识别多久都行；还没给出推荐的，2 秒后就重建录屏通道试试
+                bool settled = _pipeline?.HasHint == true;
+                if (frame == null && _lastFrame != null && (settled || DateTime.Now - _lastFrameAt < TimeSpan.FromSeconds(2))) frame = _lastFrame;
                 if (frame != null)
                 {
                     if (!ReferenceEquals(frame, _lastFrame)) { _lastFrame = frame; _lastFrameAt = DateTime.Now; }
@@ -174,10 +197,17 @@ public sealed class SolverService : Service
                         }
                     }
                 }
-                else if (DateTime.Now - _lastFrameAt > TimeSpan.FromSeconds(5))
+                else if (!settled && DateTime.Now - _lastFrameAt > TimeSpan.FromSeconds(2))
                 {
-                    Post(new Shown("没拿到画面", "屏幕录制没有画面传过来：请停止后重新打开，并在弹窗里选“整个屏幕”", null, false, "无画面"));
+                    // 2 秒拿不到任何可用帧：主动把录屏通道重建一遍，让系统重新推画面（以前只能靠玩家切屏）
+                    Saver.Log(this, "2 秒没有新画面，重建录屏通道");
+                    Rebuild();
                     _lastFrameAt = DateTime.Now;
+                    if (++_rebuilds >= 5)
+                    {
+                        _rebuilds = 0;
+                        Post(new Shown("没拿到画面", "屏幕录制没有画面传过来：请停止后重新打开，并在弹窗里选“整个屏幕”", null, false, "无画面"));
+                    }
                 }
             }
             catch (Exception ex)
