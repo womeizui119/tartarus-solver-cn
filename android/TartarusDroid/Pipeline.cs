@@ -53,7 +53,8 @@ public sealed class Pipeline : IDisposable
         _scanner = new LayoutScanner(new OcrEngine(threads: Math.Clamp(Environment.ProcessorCount / 2, 2, 4), gameLanguage: "zh"), cells, presence);
         // 和电脑版一样每个选项 1024 局模拟；手机慢，时间给到 1.5 秒才跑得满（2.4 起局面认定后不再反复重算，有这个时间）
         // （2026-11-06：手机原来 512 局、0.6 秒，玩家反映推荐不如电脑版、彩色箱子少）
-        _hints = new HintService(playouts: 1024, seconds: 1.5);
+        _hints = new HintService(playouts: int.TryParse(Environment.GetEnvironmentVariable("TARTARUS_PLAYOUTS"), out int po) ? po : 1024,
+            seconds: double.TryParse(Environment.GetEnvironmentVariable("TARTARUS_SECONDS"), out double sec) ? sec : 1.5);
         _hints.Ready += h =>
         {
             lock (_gate)
@@ -62,7 +63,8 @@ public sealed class Pipeline : IDisposable
                 if (_pendingKey == null) return;
                 if (_cache.Count > 60) _cache.Clear();
                 _cache[_pendingKey] = h;
-                Trace?.Invoke($"推算完成：{h.Result.Playouts} 局模拟 · 推荐 {(h.Ranked.Count > 0 ? Names.Ranked(h, h.Ranked[0]) : "无")}");
+                Trace?.Invoke($"推算完成：{h.Result.Playouts} 局模拟 · 推荐 {(h.Ranked.Count > 0 ? Names.Ranked(h, h.Ranked[0]) : "无")} · 各选项："
+                    + string.Join("；", h.Ranked.Take(4).Select(a => $"{Names.Ranked(h, a)} 绮彩{a.Chromatic:0.00} 至臻{a.Ultimate:0.00}")));
                 if (_pendingKey != _settle.Committed) return;
                 _hint = h;
             }

@@ -19,7 +19,7 @@ internal static class DroidTest
         p.Changed += s => last = s;
         // 环境变量 STREAM=1：每张图只识别一次、不等待，模拟手机实时录屏（每帧都略有不同）
         bool stream = Environment.GetEnvironmentVariable("STREAM") == "1";
-        p.Trace += s => { if (stream) Console.WriteLine("    记录：" + s); };
+        p.Trace += s => { if (stream || Environment.GetEnvironmentVariable("TRACE") == "1") Console.WriteLine("    记录：" + s); };
         foreach (var f in files)
         {
             var frame = ImageIO.Load(f);
@@ -35,7 +35,7 @@ internal static class DroidTest
                 p.Process(frame);
                 Console.WriteLine($"  {Path.GetFileName(f)} 第{i + 1}次 识别 {p.LastScanMs:0} 毫秒 → 大字「{last?.Main}」 {last?.Detail}");
             }
-            Thread.Sleep(4000);
+            Thread.Sleep(int.TryParse(Environment.GetEnvironmentVariable("WAIT"), out int wait) ? wait : 4000);
             Console.WriteLine($"  {Path.GetFileName(f)} 等 4 秒后 → 大字「{last?.Main}」 {last?.Detail} {last?.Extra}");
         }
 
