@@ -51,8 +51,9 @@ public sealed class Pipeline : IDisposable
         var cells = new CnnCellReader(panels: new SlotReader());
         var presence = SandboxPresence.FindTemplate() is { } t ? SandboxPresence.Load(t) : null;
         _scanner = new LayoutScanner(new OcrEngine(threads: Math.Clamp(Environment.ProcessorCount / 2, 2, 4), gameLanguage: "zh"), cells, presence);
-        // 手机比电脑慢：每步最多算 0.6 秒（出得快；结果和多算一会儿基本一样）
-        _hints = new HintService(playouts: 512, seconds: 0.6);
+        // 和电脑版一样每个选项 1024 局模拟；手机慢，时间给到 1.5 秒才跑得满（2.4 起局面认定后不再反复重算，有这个时间）
+        // （2026-11-06：手机原来 512 局、0.6 秒，玩家反映推荐不如电脑版、彩色箱子少）
+        _hints = new HintService(playouts: 1024, seconds: 1.5);
         _hints.Ready += h =>
         {
             lock (_gate)
@@ -61,6 +62,7 @@ public sealed class Pipeline : IDisposable
                 if (_pendingKey == null) return;
                 if (_cache.Count > 60) _cache.Clear();
                 _cache[_pendingKey] = h;
+                Trace?.Invoke($"推算完成：{h.Result.Playouts} 局模拟 · 推荐 {(h.Ranked.Count > 0 ? Names.Ranked(h, h.Ranked[0]) : "无")}");
                 if (_pendingKey != _settle.Committed) return;
                 _hint = h;
             }
@@ -145,14 +147,17 @@ public sealed class Pipeline : IDisposable
         Vote(board);
         var live = _live?.Invoke();
         if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
-        if (board.Days is int nd && _lastDays is int od && nd > od) { _progress.Clear(); lock (_gate) _cache.Clear(); }  // 剩余天数变多：新的一局
+        if (board.Days is int nd && _lastDays is int od && nd > od) { _progress.Clear(); _chroma = 0; lock (_gate) _cache.Clear(); }  // 剩余天数变多：新的一局
         _run.Days(board.Days);
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
         // 刑具栏和绮彩数：用整局记住的，不只看这一帧（被挡住、动画、没认出都沿用之前的）
         board.Instruments = [.. _run.Instruments(r.Instruments?.Instruments.Select(x => x.Id).ToList() ?? [])];
         board.MarksByInstruments();
-        board.Chromatic = _run.ChromaticCount(board.Chromatic, r.Chromatic?.Covered == true, DateTimeOffset.Now);
+        // 绮彩数用手机自己的跟踪（见 Chroma），不用电脑版的“读高一次就记住”：手机画面变暗、动画的那几帧常读成 6、10
+        // （2026-11-06 小米实机：绮彩栏是空的，推算却一直当成 6/10，不再去争彩色，玩家说彩色箱子比电脑版少）
+        bool dim = r.Chromatic?.Covered == true || r.Instruments?.Instruments.Any(x => x.Id == SlotReader.Hidden) == true;
+        board.Chromatic = Chroma(board.Chromatic, dim);
 
         // 局面键不看绮彩计数和刑具栏（容易读得忽有忽无，变化时局面本身也会变）
         string key = System.Text.RegularExpressions.Regex.Replace(SandboxText.Describe(board), @" · Torture Instruments \[[^\]]*\] · Chromatic \d+", "") + "|" + CardsKey(r.Text) + "|" + r.Text?.ConsumePick + r.Text?.RatwayPick;
@@ -273,8 +278,32 @@ public sealed class Pipeline : IDisposable
         _cellHist.Clear();
         _progress.Clear();
         _settle.Reset();
+        _chroma = 0;
+        _chromaCand = -1;
         lock (_gate) _cache.Clear();
         Clear("识别中…");
+    }
+
+    private int _chroma, _chromaCand = -1, _chromaTimes;
+
+    /// <summary>
+    /// 这一局的绮彩数：同一个新读数连着读到够多次才改。涨 1、2 个要 6 次；一下子涨很多（多半是读错）要 20 次；
+    /// 往下改（之前记错了）要 12 次。画面变暗 / 刑具栏被挡的帧不算。
+    /// </summary>
+    private int Chroma(int read, bool dim)
+    {
+        if (dim || read == _chroma) { if (!dim) { _chromaCand = -1; _chromaTimes = 0; } return _chroma; }
+        _chromaTimes = read == _chromaCand ? _chromaTimes + 1 : 1;
+        _chromaCand = read;
+        int need = read > _chroma ? (read - _chroma <= 2 ? 6 : 20) : 12;
+        if (_chromaTimes >= need)
+        {
+            Trace?.Invoke($"绮彩数 {_chroma} → {read}");
+            _chroma = read;
+            _chromaCand = -1;
+            _chromaTimes = 0;
+        }
+        return _chroma;
     }
 
     /// <summary>卡牌部分的“局面键”：审讯室只要读到煽动或赏赐之一就当两张都在；别的卡按读到的意思，多读出的杂字（“送”）去掉。</summary>
