@@ -54,14 +54,16 @@ public sealed class Pipeline : IDisposable
     public Pipeline(Func<LoggedRun?>? live = null)
     {
         _live = live;
-        _slots = new SlotReader();
-        var cells = new CnnCellReader(panels: _slots) { ReuseUnchanged = true };
+        // 不管发热，全速：识别和推算都用满所有核（2026-11-07 玩家要求速度拉到最快）
+        int cores = Math.Max(2, Environment.ProcessorCount);
+        _slots = new SlotReader(threads: 2);
+        var cells = new CnnCellReader(panels: _slots, threads: Math.Max(2, cores / 2)) { ReuseUnchanged = true };
         var presence = SandboxPresence.FindTemplate() is { } t ? SandboxPresence.Load(t) : null;
-        _scanner = new LayoutScanner(new OcrEngine(threads: Math.Clamp(Environment.ProcessorCount / 2, 2, 4), gameLanguage: "zh"), cells, presence);
+        _scanner = new LayoutScanner(new OcrEngine(threads: Math.Max(2, cores / 2), gameLanguage: "zh"), cells, presence) { PickFirst = true };
         // 和电脑版一样每个选项 1024 局模拟；手机慢，时间给到 1.5 秒才跑得满（2.4 起局面认定后不再反复重算，有这个时间）
         // （2026-11-06：手机原来 512 局、0.6 秒，玩家反映推荐不如电脑版、彩色箱子少）
         _hints = new HintService(playouts: int.TryParse(Environment.GetEnvironmentVariable("TARTARUS_PLAYOUTS"), out int po) ? po : 1024,
-            seconds: double.TryParse(Environment.GetEnvironmentVariable("TARTARUS_SECONDS"), out double sec) ? sec : 1.0);
+            seconds: double.TryParse(Environment.GetEnvironmentVariable("TARTARUS_SECONDS"), out double sec) ? sec : 1.0, threads: cores);
         _hints.Ready += h =>
         {
             lock (_gate)
@@ -80,6 +82,7 @@ public sealed class Pipeline : IDisposable
                 Trace?.Invoke($"推算完成：{h.Result.Playouts} 局模拟 · 推荐 {(h.Ranked.Count > 0 ? Names.Ranked(h, h.Ranked[0]) : "无")} · 各选项："
                     + string.Join("；", h.Ranked.Take(4).Select(a => $"{Names.Ranked(h, a)} 绮彩{a.Chromatic:0.00} 至臻{a.Ultimate:0.00}")));
                 if (_pendingKey != _settle.Committed) return;
+                if (DateTime.Now - _tapAt < TimeSpan.FromSeconds(1)) return;  // 刚点过：等画面变，由 ShowSettled 放出
                 _hint = h;
             }
             SetStatus($"已识别 · {LastScanMs:0} 毫秒");
@@ -171,6 +174,17 @@ public sealed class Pipeline : IDisposable
     }
 
     private int _otherKind;
+    private DateTime _tapAt;
+
+    /// <summary>
+    /// 玩家手指碰了屏幕：提示马上撤下（不等识别，2026-11-07：提示消失太慢）。点完画面变了就按新局面重新给；
+    /// 1 秒后画面还是原来那样（点在空处），原来的提示再出来。
+    /// </summary>
+    public void UserTapped()
+    {
+        _tapAt = DateTime.Now;
+        if (HasHint) Show(null, "识别中…", keepPending: true);
+    }
     private byte[]? _lastThumb;
     private int _reused;
 
@@ -217,6 +231,7 @@ public sealed class Pipeline : IDisposable
         lock (_gate)
         {
             if (_pendingKey == null || _pendingKey != _settle.Committed) return;
+            if (DateTime.Now - _tapAt < TimeSpan.FromSeconds(1)) return;
             if (_held != null && DateTime.Now >= _heldUntil) { show = _held; _held = null; _cache[_pendingKey] = show; }
             else if (_hint == null && _held == null && _cache.TryGetValue(_pendingKey, out var c)) show = c;
             if (show == null) return;

@@ -63,6 +63,10 @@ public sealed class LayoutScanner : ISandboxScanner
     /// <summary>A pick's measure this near the log's scale is the log's: the measure is a few percent off (0.663 for 0.64).</summary>
     private const double LoggedScaleNear = 0.08;
 
+    /// <summary>中文版（手机）：上一帧是选择画面时先只读卡牌（见 ScanPicture）。</summary>
+    public bool PickFirst { get; set; }
+    private bool _lastWasPick;
+
     public ScanResult Scan(Frame frame)
     {
         var picture = GamePicture.Of(frame);
@@ -86,7 +90,23 @@ public sealed class LayoutScanner : ISandboxScanner
             _scaleSearchedAt = default;
         }
         _loggedK = logged;
+        // 中文版（手机）：上一帧是选择画面（选刑具 / 珍藏）就先只读卡牌，读到了就不再识别棋盘
+        // （手机上一帧选择画面完整识别要 1.4 秒，2026-11-07 华为录屏：珍藏画面 8 秒才出提示）
+        if (PickFirst && _lastWasPick && !resized)
+        {
+            var sw = Stopwatch.StartNew();
+            PickRead? quick = null;
+            try { quick = ReadPick(frame, _layout!) ?? ReadTreasure(frame, _layout!); } catch (Exception) { }
+            if (quick != null)
+            {
+                var q = new ScanResult { Ok = false, Pick = quick, Layout = _layout, Source = Name, Reason = quick.Kind == PickRead.Treasure ? "Warden's Treasure." : "Select a Torture Instrument." };
+                q.Timings["pick"] = sw.Elapsed.TotalMilliseconds;
+                q.Ms = sw.Elapsed.TotalMilliseconds;
+                return q;
+            }
+        }
         var r = ScanAt(frame, _layout!);
+        _lastWasPick = r.Pick != null;
         double? measured = PickScale(r);
         if ((measured ?? SandboxScale(frame, r)) is double k)
         {

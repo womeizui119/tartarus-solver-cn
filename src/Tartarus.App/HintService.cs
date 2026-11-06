@@ -75,7 +75,7 @@ public sealed class HintService : IDisposable
     /// <summary>A line for the log: what changed in the position since the last search (diagnostics).</summary>
     public event Action<string>? Log;
 
-    public HintService(int playouts = 1024, double seconds = 0.5)
+    public HintService(int playouts = 1024, double seconds = 0.5, int? threads = null)
     {
         Playouts = playouts;
         Seconds = seconds;
@@ -89,7 +89,7 @@ public sealed class HintService : IDisposable
         Picks = ValueNet.FindPicks() is { } picks ? ValueNet.Load(picks) : null;
         // The chests shown as runs end with them, not as the playouts got them (models/solver/chests.txt).
         Chests = ChestCalibration.Load();
-        _search = new MonteCarloSearch(_engine, weights) { Threads = Math.Max(2, Environment.ProcessorCount / 2), Net = Net, Policy = Policy, InstrumentPolicy = Picks };
+        _search = new MonteCarloSearch(_engine, weights) { Threads = threads ?? Math.Max(2, Environment.ProcessorCount / 2), Net = Net, Policy = Policy, InstrumentPolicy = Picks };
         // Warm up (the JIT's optimized code, the thread pool) so the first real hint is as quick as the rest.
         _ = Task.Run(() =>
         {

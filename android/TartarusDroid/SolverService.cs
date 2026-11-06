@@ -64,6 +64,7 @@ public sealed class SolverService : Service
         _overlay.SaveClicked += () => Save(manual: true);
         _overlay.AutoSaveChanged += on => AutoSave = on;
         _overlay.StopClicked += StopAll;
+        _overlay.Tapped += () => _pipeline?.UserTapped();
 
 
         _capture = new Capture(this, _projection, s => Saver.Log(this, s));
@@ -140,7 +141,7 @@ public sealed class SolverService : Service
                     staleSince = DateTime.MinValue;
                     _lastFrame = frame;
                     // 画面静止时系统不推新帧，这是正常的：照样拿最新一帧反复识别（静止画面正是识别最准的时候）
-                    if (AutoSave && isNew && DateTime.Now - _lastAutoSave > TimeSpan.FromSeconds(3)) Save(manual: false);
+                    if (AutoSave && isNew && DateTime.Now - _lastAutoSave > TimeSpan.FromSeconds(3)) { _lastAutoSave = DateTime.Now; Task.Run(() => Save(manual: false)); }  // 存图放到后台，不拖慢识别
                     if (frame.Width < frame.Height) Post(new Shown("请横屏", "游戏要横屏玩，求解器才能看清棋盘", null, false, "竖屏"));
                     else if (IsBlack(frame)) Post(new Shown("画面是黑的", "录屏只录到黑屏：请停止后重新打开，录屏弹窗里选“整个屏幕”；若仍是黑屏，可能是手机或游戏禁止录屏", null, false, "黑屏"));
                     else
@@ -162,8 +163,8 @@ public sealed class SolverService : Service
             {
                 Log.Error("tartarus", ex.ToString());
             }
-            // 每轮至少隔 0.1 秒：识别本身约 0.1～0.3 秒，走一步后 0.5 秒内就能凑齐两次读数
-            var rest = TimeSpan.FromMilliseconds(100) - (DateTime.Now - started);
+            // 全速：每轮只歇 0.02 秒（画面没变时识别直接沿用上次结果，很快）
+            var rest = TimeSpan.FromMilliseconds(20) - (DateTime.Now - started);
             if (rest > TimeSpan.Zero) Thread.Sleep(rest);
         }
     }

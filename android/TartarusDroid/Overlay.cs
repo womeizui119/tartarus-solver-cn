@@ -24,7 +24,7 @@ public sealed class Overlay
     private readonly WindowManagerLayoutParams _boxLp;
     private bool _boxShown;
 
-    public event Action? SaveClicked, StopClicked;
+    public event Action? SaveClicked, StopClicked, Tapped;
     public event Action<bool>? AutoSaveChanged;
 
     public Overlay(Context ctx)
@@ -66,7 +66,7 @@ public sealed class Overlay
         _lp = new WindowManagerLayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent,
             WindowManagerTypes.ApplicationOverlay,
-            WindowManagerFlags.NotFocusable | WindowManagerFlags.LayoutNoLimits,
+            WindowManagerFlags.NotFocusable | WindowManagerFlags.LayoutNoLimits | WindowManagerFlags.WatchOutsideTouch,
             Format.Translucent)
         {
             // 默认在左下角：左上是游戏的目标和刑具栏。按住红字可以拖到别处
@@ -75,6 +75,12 @@ public sealed class Overlay
             Y = Dp(8),
         };
         Draggable(_main);
+        // 手指碰到屏幕任何别的地方（游戏上）：系统发一个“外面被点了”，提示马上撤下
+        _root.Touch += (_, e) =>
+        {
+            if (e.Event!.Action == MotionEventActions.Outside) { Tapped?.Invoke(); e.Handled = true; }
+            else e.Handled = false;
+        };
 
         _boxes = new BoxView(ctx);
         _boxLp = new WindowManagerLayoutParams(
@@ -136,6 +142,9 @@ public sealed class Overlay
     {
         try { UpdateBoxes(s); } catch (Exception) { }
         // 推荐：只写几号几号（“去13号牢房”→“去13号”）；没有推荐时灰色小字写状态，让人知道它在工作
+        // 游戏画面上有标签时，左下角只留“⋯”：画面不乱（2026-11-07）
+        bool labels = s.HasHint && s.Boxes.Count > 0;
+        _main.Visibility = labels ? ViewStates.Gone : ViewStates.Visible;
         if (s.HasHint)
         {
             _main.Text = Short(s.Main);
@@ -149,7 +158,7 @@ public sealed class Overlay
             _main.SetTextSize(Android.Util.ComplexUnitType.Sp, 14);
         }
         // 小字只在必须时出现：吃/寻猎要点两下、出错、黑屏这类
-        string sub = s.HasHint ? (s.Detail.StartsWith("先点") ? s.Detail : "") : (s.Main is "暂无" or "计算中…" or "准备中…" or "识别中…" ? "" : s.Detail);
+        string sub = labels ? "" : s.HasHint ? (s.Detail.StartsWith("先点") ? s.Detail : "") : (s.Main is "暂无" or "计算中…" or "准备中…" or "识别中…" ? "" : s.Detail);
         _sub.Text = sub;
         _sub.Visibility = sub.Length > 0 ? ViewStates.Visible : ViewStates.Gone;
     }

@@ -79,8 +79,8 @@ public static class HintBoxes
                 _ => null,
             };
         if (main is { } m) boxes.Add(m);
-        // 推荐“吃 / 寻猎”：点完卡牌要点的那个牢房，先用虚线框出来
-        if (!hint.ConsumeOnly && !hint.HuntOnly && a.Kind is ActionKind.Consume or ActionKind.Chain or ActionKind.Hunt && Cell(a.Arg, "再点这里", dashed: true) is { } target)
+        // 只给一个标签：画面不乱（2026-11-07）。“再点这里”不再画，点完卡牌后的选目标画面会再给“吃这个”
+        if (false && !hint.ConsumeOnly && !hint.HuntOnly && a.Kind is ActionKind.Consume or ActionKind.Chain or ActionKind.Hunt && Cell(a.Arg, "再点这里", dashed: true) is { } target)
             boxes.Add(target);
         return boxes;
     }
