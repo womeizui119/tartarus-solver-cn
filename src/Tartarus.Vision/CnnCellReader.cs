@@ -61,6 +61,33 @@ public sealed class CnnCellReader : ICellReader
         return null;
     }
 
+    /// <summary>中文版（手机）：格子画面没变就沿用上一帧的网络输出。</summary>
+    public bool ReuseUnchanged { get; set; }
+    private float[]? _lastCellInput, _lastArrowInput;
+    private (float[][] Kind, float[][] Code, float[][] Rarity, float[][] Visible, float[][] Flags)? _lastCellOut;
+    private float[][]? _lastArrowOut;
+    /// <summary>每一块（格子）的像素平均差都小于这个（0～1）就算没变：动画发光、录屏压缩的抖动在 0.01 以内。</summary>
+    public double SameWithin { get; set; } = 0.012;
+
+    private bool Same(ReadOnlySpan<float> now, ref float[]? last, int blocks)
+    {
+        bool same = last != null && last.Length == now.Length;
+        if (same)
+        {
+            int per = now.Length / blocks;
+            for (int b = 0; b < blocks && same; b++)
+            {
+                double sum = 0;
+                var x = now.Slice(b * per, per);
+                var y = last.AsSpan(b * per, per);
+                for (int i = 0; i < per; i += 3) sum += Math.Abs(x[i] - y[i]);
+                if (sum / (per / 3.0) > SameWithin) same = false;
+            }
+        }
+        if (!same) last = now.ToArray();
+        return same;
+    }
+
     // The networks' inputs, reused from scan to scan (one reader at a time).
     private readonly Scratch<float> _cellBuffer = new(), _arrowBuffer = new();
 
@@ -89,14 +116,22 @@ public sealed class CnnCellReader : ICellReader
         }
         double cropMs = sw.Elapsed.TotalMilliseconds;
 
-        using var cellOut = _cells.Run([NamedOnnxValue.CreateFromTensor("image", cellInput), NamedOnnxValue.CreateFromTensor("cell", cellIds)]);
-        using var arrowOut = _arrows.Run([NamedOnnxValue.CreateFromTensor("image", arrowInput), NamedOnnxValue.CreateFromTensor("cell", arrowIds)]);
-        var kind = Output(cellOut, "kind");
-        var code = Output(cellOut, "code");
-        var rarity = Output(cellOut, "rarity");
-        var visible = Output(cellOut, "visible");
-        var flags = Output(cellOut, "flags");
-        var arrow = Output(arrowOut, "arrow");
+        // 中文版（手机）：格子画面和上一帧几乎一样就不再跑网络，直接用上一帧的输出（手机上这一步每帧 0.5 秒左右，
+        // 大多数帧棋盘没变）。只在 ReuseUnchanged 打开时这样做；电脑版不开，行为不变。
+        bool cellsSame = ReuseUnchanged && Same(cellInput.Buffer.Span, ref _lastCellInput, 15);
+        bool arrowsSame = ReuseUnchanged && Same(arrowInput.Buffer.Span, ref _lastArrowInput, 16);
+        if (!cellsSame || _lastCellOut == null)
+        {
+            using var cellOut = _cells.Run([NamedOnnxValue.CreateFromTensor("image", cellInput), NamedOnnxValue.CreateFromTensor("cell", cellIds)]);
+            _lastCellOut = (Output(cellOut, "kind"), Output(cellOut, "code"), Output(cellOut, "rarity"), Output(cellOut, "visible"), Output(cellOut, "flags"));
+        }
+        if (!arrowsSame || _lastArrowOut == null)
+        {
+            using var arrowOut = _arrows.Run([NamedOnnxValue.CreateFromTensor("image", arrowInput), NamedOnnxValue.CreateFromTensor("cell", arrowIds)]);
+            _lastArrowOut = Output(arrowOut, "arrow");
+        }
+        var (kind, code, rarity, visible, flags) = _lastCellOut.Value;
+        var arrow = _lastArrowOut;
 
         var cells = new List<CellRead>(16)
         {

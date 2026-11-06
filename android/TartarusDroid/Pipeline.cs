@@ -55,13 +55,13 @@ public sealed class Pipeline : IDisposable
     {
         _live = live;
         _slots = new SlotReader();
-        var cells = new CnnCellReader(panels: _slots);
+        var cells = new CnnCellReader(panels: _slots) { ReuseUnchanged = true };
         var presence = SandboxPresence.FindTemplate() is { } t ? SandboxPresence.Load(t) : null;
         _scanner = new LayoutScanner(new OcrEngine(threads: Math.Clamp(Environment.ProcessorCount / 2, 2, 4), gameLanguage: "zh"), cells, presence);
         // 和电脑版一样每个选项 1024 局模拟；手机慢，时间给到 1.5 秒才跑得满（2.4 起局面认定后不再反复重算，有这个时间）
         // （2026-11-06：手机原来 512 局、0.6 秒，玩家反映推荐不如电脑版、彩色箱子少）
         _hints = new HintService(playouts: int.TryParse(Environment.GetEnvironmentVariable("TARTARUS_PLAYOUTS"), out int po) ? po : 1024,
-            seconds: double.TryParse(Environment.GetEnvironmentVariable("TARTARUS_SECONDS"), out double sec) ? sec : 1.2);
+            seconds: double.TryParse(Environment.GetEnvironmentVariable("TARTARUS_SECONDS"), out double sec) ? sec : 1.0);
         _hints.Ready += h =>
         {
             lock (_gate)
@@ -105,7 +105,17 @@ public sealed class Pipeline : IDisposable
     public void Process(Frame frame)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var r = _scanner.Scan(frame);
+        // 整个画面和上次识别时几乎一样（停在选择画面、等玩家点）：直接用上次的结果，不再识别（手机上省 1 秒多）
+        var thumb = Thumb(frame);
+        bool same = LastScan != null && _lastThumb != null && _lastThumb.Length == thumb.Length && ThumbDiff(thumb, _lastThumb) < 2.5 && ++_reused < 4;
+        ScanResult r;
+        if (same) r = LastScan!;
+        else
+        {
+            r = _scanner.Scan(frame);
+            _lastThumb = thumb;
+            _reused = 0;
+        }
         LastScanMs = sw.Elapsed.TotalMilliseconds;
         LastScan = r;
         if (DateTime.Now - _lastTrace > TimeSpan.FromSeconds(1))
@@ -131,6 +141,10 @@ public sealed class Pipeline : IDisposable
                 if (++_otherKind >= 2 && HasHint) Show(null, "识别中…", keepPending: true);
             }
             else _otherKind = 0;
+            // 棋盘上卡牌变了（玩家点了卡、卡消失或换了）：旧提示这一帧就撤下，不等新局面认定（2026-11-07 华为：提示消失太慢）
+            if (!changed && b != null && _settle.Committed is { } now2 && KindOf(now2) == "board" && Settler.Tail(key) != Settler.Tail(now2)
+                && !key.Contains(ScreenText.UnreadCard) && HasHint)
+                Show(null, "识别中…", keepPending: true);
             // 回到认定的画面：提示重新显示（算过的直接用）；等待中的“取消”提示到时间了也在这里放出来
             if (_settle.Matches(key) || changed) _boxScan = r;
             if (!changed && _settle.Matches(key)) ShowSettled();
@@ -157,6 +171,35 @@ public sealed class Pipeline : IDisposable
     }
 
     private int _otherKind;
+    private byte[]? _lastThumb;
+    private int _reused;
+
+    /// <summary>画面缩成 96×44 的灰度小图，用来判断画面变没变。</summary>
+    private static byte[] Thumb(Frame f)
+    {
+        const int W = 96, H = 44;
+        var t = new byte[W * H];
+        var px = f.Pixels;
+        for (int y = 0; y < H; y++)
+        {
+            int sy = (int)((y + 0.5) * f.Height / H);
+            for (int x = 0; x < W; x++)
+            {
+                int sx = (int)((x + 0.5) * f.Width / W);
+                int i = (sy * f.Width + sx) * 4;
+                t[y * W + x] = (byte)((px[i] + 2 * px[i + 1] + px[i + 2]) >> 2);
+            }
+        }
+        return t;
+    }
+
+    /// <summary>两张小图每个点的平均差（0～255）。</summary>
+    private static double ThumbDiff(byte[] a, byte[] b)
+    {
+        long sum = 0;
+        for (int i = 0; i < a.Length; i++) sum += Math.Abs(a[i] - b[i]);
+        return (double)sum / a.Length;
+    }
     private readonly SlotReader _slots;
     /// <summary>当前认定局面最近一帧的识别结果：画框用它的位置（卡牌、牢房在画面上的哪里）。</summary>
     private ScanResult? _boxScan;

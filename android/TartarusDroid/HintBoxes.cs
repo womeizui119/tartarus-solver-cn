@@ -7,7 +7,8 @@ using Tartarus.Vision.Ocr;
 namespace TartarusDroid;
 
 /// <summary>画在游戏画面上的一个框（录屏画面的像素坐标）：实线是这一步要点的，虚线是点完卡牌后要点的牢房。</summary>
-public readonly record struct HintBox(float X0, float Y0, float X1, float Y1, bool Dashed);
+/// <param name="Side">标签放在目标的哪一边：0 上、1 下、2 左、3 右。牢房的标签朝棋盘中间的空地放，不压到别的牢房（录屏会录到标签）。</param>
+public readonly record struct HintBox(float X0, float Y0, float X1, float Y1, bool Dashed, string Label = "点这里", int Side = 0);
 
 /// <summary>
 /// 和电脑版一样把推荐框出来（电脑版 SandboxOverlayView.Hints 的同一套规则，搬到手机）：
@@ -21,17 +22,17 @@ public static class HintBoxes
     {
         var boxes = new List<HintBox>();
         if (scan.Layout is not { } layout || hint.Ranked.Count == 0) return boxes;
-        HintBox Px(CanvasRect r, bool dashed = false)
+        HintBox Px(CanvasRect r, string label = "点这张")
         {
             var b = layout.ToPixels(r);
-            return new HintBox((float)b.X0, (float)b.Y0, (float)(b.X0 + b.Width), (float)(b.Y0 + b.Height), dashed);
+            return new HintBox((float)b.X0, (float)b.Y0, (float)(b.X0 + b.Width), (float)(b.Y0 + b.Height), false, label);
         }
 
         if (scan.Pick is { } pick)
         {
             var best = hint.Ranked[0].Action;
             bool treasure = pick.Kind == PickRead.Treasure;
-            if (best.Kind == ActionKind.Reroll) boxes.Add(Px(ScreenLayout.PickRerollButton));
+            if (best.Kind == ActionKind.Reroll) boxes.Add(Px(ScreenLayout.PickRerollButton, "点这里"));
             else
                 foreach (var card in pick.Cards)
                 {
@@ -39,17 +40,21 @@ public static class HintBoxes
                     GameAction? act = treasure
                         ? GameObservation.Treasure(card.Id) is { } t ? new GameAction(ActionKind.PickTreasure, (byte)t) : null
                         : GameData.InstrumentById(card.Id) is { } i ? new GameAction(ActionKind.PickInstrument, (byte)i) : null;
-                    if (act == best) boxes.Add(Px(treasure ? ScreenLayout.TreasureCard(card.X) : ScreenLayout.PickCard(card.Index)));
+                    if (act == best) boxes.Add(Px(treasure ? ScreenLayout.TreasureCard(card.X) : ScreenLayout.PickCard(card.Index), "选这张"));
                 }
             return boxes;
         }
 
         if (scan.Cells is not { } cells) return boxes;
-        HintBox? Cell(int n, bool dashed = false)
+        HintBox? Cell(int n, string label, bool dashed = false)
         {
             if (cells.FirstOrDefault(c => c.N == n) is not { } c) return null;
             var (x0, y0, x1, y1) = SandboxGeometry.FrameBox(c.X, c.Y, c.K);
-            return new HintBox((float)x0, (float)y0, (float)x1, (float)y1, dashed);
+            // 朝棋盘中间：看这个牢房在中心的哪一边，横竖哪个方向偏得多就往反方向放
+            double mx = cells.Average(q => q.X), my = cells.Average(q => q.Y);
+            double dx = c.X - mx, dy = (c.Y - my) * 1.6;  // 棋盘是扁的：竖向偏一点就算上下两排
+            int side = Math.Abs(dy) >= Math.Abs(dx) ? (dy < 0 ? 1 : 0) : (dx < 0 ? 3 : 2);
+            return new HintBox((float)x0, (float)y0, (float)x1, (float)y1, dashed, label, side);
         }
         HintBox? Card(Func<CardText, bool> which) =>
             scan.Text?.Cards.FirstOrDefault(which) is { } card
@@ -58,14 +63,14 @@ public static class HintBoxes
 
         var a = hint.Ranked[0].Action;
         HintBox? main;
-        if (hint.HuntOnly) main = a.Kind == ActionKind.Hunt ? Cell(a.Arg) : null;
+        if (hint.HuntOnly) main = a.Kind == ActionKind.Hunt ? Cell(a.Arg, "猎这个") : null;
         else if (hint.ConsumeOnly)
-            main = a.Kind is ActionKind.Consume or ActionKind.Chain ? Cell(a.Arg) : Px(ScreenLayout.ConsumeCancel.Offset(-rightShift, 0));
+            main = a.Kind is ActionKind.Consume or ActionKind.Chain ? Cell(a.Arg, "吃这个") : Px(ScreenLayout.ConsumeCancel.Offset(-rightShift, 0), "点取消");
         else
             main = a.Kind switch
             {
-                ActionKind.Move => Card(t => t.DestinationCell == a.Arg + 1) ?? Cell(a.Arg),
-                ActionKind.Ratway => Cell(a.Arg),
+                ActionKind.Move => Card(t => t.DestinationCell == a.Arg + 1) ?? Cell(a.Arg, "去这里"),
+                ActionKind.Ratway => Cell(a.Arg, "去这里"),
                 ActionKind.Consume or ActionKind.Chain => Word("consume"),
                 ActionKind.Hunt => Word("hunt"),
                 ActionKind.Replace => Word("replace"),
@@ -75,7 +80,7 @@ public static class HintBoxes
             };
         if (main is { } m) boxes.Add(m);
         // 推荐“吃 / 寻猎”：点完卡牌要点的那个牢房，先用虚线框出来
-        if (!hint.ConsumeOnly && !hint.HuntOnly && a.Kind is ActionKind.Consume or ActionKind.Chain or ActionKind.Hunt && Cell(a.Arg, dashed: true) is { } target)
+        if (!hint.ConsumeOnly && !hint.HuntOnly && a.Kind is ActionKind.Consume or ActionKind.Chain or ActionKind.Hunt && Cell(a.Arg, "再点这里", dashed: true) is { } target)
             boxes.Add(target);
         return boxes;
     }

@@ -48,11 +48,16 @@ public sealed class Settler
             if (_long.Count(k => k == key) >= OneFieldNeed && _long.Count(k => k == c) <= LongWindow - OneFieldNeed) { Committed = key; return true; }
             return false;
         }
+        // 卡牌 / 画面状态（“§”之后）变了，而且连着 2 次读到一模一样的新局面：直接认（玩家点了一下，画面真的变了）
+        if (Tail(key) != Tail(c) && _recent.Count >= 2 && _recent[^1] == key && _recent[^2] == key) { Committed = key; return true; }
         int support = _recent.Count(k => Close(k, key) && !Close(k, c));
         int stayNear = _recent.Count(k => Close(k, c));
         if (support >= Need && stayNear <= 1) { Committed = key; return true; }
         return false;
     }
+
+    /// <summary>键里“§”之后的部分（卡牌、画面状态）；没有“§”时是整个键。</summary>
+    public static string Tail(string key) => key.IndexOf('§') is int i and >= 0 ? key[i..] : key;
 
     /// <summary>这次读数算不算当前认定的局面（同一个或只差一项）。</summary>
     public bool Matches(string key) => Committed is { } c && Close(key, c);

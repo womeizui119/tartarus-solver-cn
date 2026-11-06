@@ -68,14 +68,13 @@ public class SettlerTests
     }
 
     [Fact]
-    public void A_real_move_is_followed_within_three_reads()
+    public void A_real_move_is_followed_within_two_reads()
     {
         var s = new Settler();
         s.Feed(Key()); s.Feed(Key()); s.Feed(Key()); s.Feed(Key());
         var next = Key(cells: "", days: "16", warden: "5");
         Assert.False(s.Feed(next));
-        Assert.False(s.Feed(next));
-        Assert.True(s.Feed(next));
+        Assert.True(s.Feed(next));  // 卡牌也变了：连着 2 次一样就认
         Assert.Equal(next, s.Committed);
     }
 
@@ -124,7 +123,7 @@ public class SettlerTests
     }
 
     [Fact]
-    public void Cards_coming_out_are_followed_within_three_reads()
+    public void Cards_coming_out_are_followed_within_two_reads()
     {
         // 换完以后：棋盘不变，只多出“吃 / 结束”两张卡（2026-11-06 华为实机：等了 16 秒）
         var s = new Settler();
@@ -132,8 +131,7 @@ public class SettlerTests
         s.Feed(waiting); s.Feed(waiting); s.Feed(waiting); s.Feed(waiting);
         var decision = Key(cells: "consume,end");
         Assert.False(s.Feed(decision));
-        Assert.False(s.Feed(decision));
-        Assert.True(s.Feed(decision));
+        Assert.True(s.Feed(decision));  // 卡牌变了：连着 2 次一样就认
     }
 
     [Fact]

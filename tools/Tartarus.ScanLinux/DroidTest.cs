@@ -28,7 +28,7 @@ internal static class DroidTest
                 p.Process(frame);
                 Console.WriteLine($"  {Path.GetFileName(f)} 识别 {p.LastScanMs:0} 毫秒 → 大字「{last?.Main}」" + (Environment.GetEnvironmentVariable("TIMINGS") == "1" && p.LastScan is { } ls ? "  " + string.Join(" ", ls.Timings.Select(kv => $"{kv.Key}={kv.Value:0}")) : ""));
                 if (Environment.GetEnvironmentVariable("BOXES") == "1" && last is { Boxes.Count: > 0 } sb)
-                    Console.WriteLine("    框：" + string.Join(" ", sb.Boxes.Select(b => $"{b.X0:0},{b.Y0:0},{b.X1:0},{b.Y1:0},{(b.Dashed ? 1 : 0)}")) + $" 画面 {sb.FrameWidth}x{sb.FrameHeight}");
+                    Console.WriteLine("    框：" + string.Join(" ", sb.Boxes.Select(b => $"{b.X0:0},{b.Y0:0},{b.X1:0},{b.Y1:0},{(b.Dashed ? 1 : 0)},{b.Side},{b.Label}")) + $" 画面 {sb.FrameWidth}x{sb.FrameHeight}");
                 Thread.Sleep(150);
                 continue;
             }
