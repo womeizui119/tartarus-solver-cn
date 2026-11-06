@@ -113,20 +113,7 @@ public sealed class SolverService : Service
         _display = _projection!.CreateVirtualDisplay("tartarus", w, h, dpi, (DisplayFlags)16 /* VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR：镜像整个屏幕 */, _reader.Surface, null, null);
     }
 
-    /// <summary>转屏后跟着改大小（同一个授权只能建一次虚拟屏幕，所以改大小而不是重建）。</summary>
     private int _rebuilds;
-
-    /// <summary>把缓冲区里积压的帧全部取出并关掉。</summary>
-    private void Drain()
-    {
-        for (int i = 0; i < 8; i++)
-        {
-            Android.Media.Image? img = null;
-            try { img = _reader?.AcquireNextImage(); } catch (Exception) { break; }
-            if (img == null) break;
-            img.Close();
-        }
-    }
     private DateTime _lastGrabTrace;
 
     /// <summary>重建录屏通道（换一个新的画面接收器），逼系统重新推画面。</summary>
@@ -142,6 +129,7 @@ public sealed class SolverService : Service
         _lastFrame = null;
     }
 
+    /// <summary>转屏后跟着改大小（同一个授权只能建一次虚拟屏幕，所以改大小而不是重建）。</summary>
     private void FollowRotation()
     {
         var (w, h, dpi) = ScreenSize();
@@ -192,8 +180,11 @@ public sealed class SolverService : Service
                 // 画面静止时录屏不推新帧（切天过场之后、棋盘不动时都是这样），拿不到新帧就重复识别上一帧：
                 // 静止画面正是识别最准的时候（2026-11-06 实机：每结束一天就停住，切屏强制重绘后才恢复）
                 // 已经给出推荐的静止画面，重复识别多久都行；还没给出推荐的，2 秒后就重建录屏通道试试
+                // 拿不到新帧时重复识别上一帧（静止画面本来就不推新帧）；但不论有没有推荐，5 秒没新帧都重建一次通道，
+                // 免得帧流其实已经断了还一直当成“静止”（2026-11-06 记录：选刑具后“没拿到新帧”从 0.4 秒一路涨到 9.9 秒）
                 bool settled = _pipeline?.HasHint == true;
-                if (frame == null && _lastFrame != null && (settled || DateTime.Now - _lastFrameAt < TimeSpan.FromSeconds(2))) frame = _lastFrame;
+                double idle = (DateTime.Now - _lastFrameAt).TotalSeconds;
+                if (frame == null && _lastFrame != null && idle < (settled ? 5 : 2)) frame = _lastFrame;
                 if (frame != null)
                 {
                     if (!ReferenceEquals(frame, _lastFrame)) { _lastFrame = frame; _lastFrameAt = DateTime.Now; }
@@ -215,10 +206,10 @@ public sealed class SolverService : Service
                         }
                     }
                 }
-                else if (!settled && DateTime.Now - _lastFrameAt > TimeSpan.FromSeconds(2))
+                else if (idle > (settled ? 5 : 2))
                 {
-                    // 2 秒拿不到任何可用帧：主动把录屏通道重建一遍，让系统重新推画面（以前只能靠玩家切屏）
-                    Saver.Log(this, "2 秒没有新画面，重建录屏通道");
+                    // 拿不到任何可用帧：主动把录屏通道重建一遍，让系统重新推画面（以前只能靠玩家切屏）
+                    Saver.Log(this, $"{idle:0} 秒没有新画面，重建录屏通道");
                     Rebuild();
                     _lastFrameAt = DateTime.Now;
                     if (++_rebuilds >= 5)
@@ -246,44 +237,57 @@ public sealed class SolverService : Service
     /// </summary>
     private Frame? Grab()
     {
-        Android.Media.Image? image = null;
-        // 先把积压的旧帧全部取出关掉，只留最新一张：槽位始终有空，系统才会一直推
+        // 取最新一帧：把积压的全取出来，只留最新一张。关键是取出来的每一张在任何情况下都必须关掉，
+        // 否则槽位泄漏，几轮后 4 个全被占着，系统再也推不进新帧（2026-11-06 荣耀实机记录：
+        // “maxImages (4) has already been acquired” 刷了几百行，正是从第一版起“不切屏就卡死”的根源）。
+        Android.Media.Image? newest = null;
         try
         {
-            Android.Media.Image? newest = null;
             for (int i = 0; i < 8; i++)
             {
-                var next = _reader?.AcquireNextImage();
+                Android.Media.Image? next;
+                try { next = _reader?.AcquireNextImage(); }
+                catch (Java.Lang.IllegalStateException) { break; }  // 没有更多了 / 槽位状态异常：用手里已有的
                 if (next == null) break;
                 newest?.Close();
                 newest = next;
             }
-            image = newest;
+            if (newest == null) return null;
+            var plane = newest.GetPlanes()![0];
+            var buffer = plane.Buffer!;
+            int w = newest.Width, h = newest.Height, rowStride = plane.RowStride, pixelStride = plane.PixelStride;
+            var pixels = new byte[w * h * 4];
+            var row = new byte[rowStride];
+            buffer.Rewind();
+            for (int y = 0; y < h; y++)
+            {
+                int len = Math.Min(rowStride, buffer.Remaining());
+                buffer.Get(row, 0, len);
+                if (pixelStride == 4) Buffer.BlockCopy(row, 0, pixels, y * w * 4, w * 4);
+                else for (int x = 0; x < w; x++) Buffer.BlockCopy(row, x * pixelStride, pixels, (y * w + x) * 4, 4);
+            }
+            _grabFails = 0;
+            return new Frame(w, h, pixels, Tartarus.Vision.PixelFormat.Rgba32);
         }
-        catch (Java.Lang.IllegalStateException ex)
+        catch (Exception ex)
         {
-            // 槽位满了：全部清空再来
-            Saver.Log(this, "录屏缓冲区满：" + ex.Message);
-            Drain();
+            Log.Error("tartarus", ex.ToString());
+            // 连续多次取不到：槽位可能已经被系统侧占死，重建整个接收器是唯一可靠的清法
+            if (++_grabFails >= 10)
+            {
+                Saver.Log(this, "取帧连续失败：" + ex.Message + "，重建录屏通道");
+                _grabFails = 0;
+                Rebuild();
+            }
             return null;
         }
-        using var _ = image;
-        if (image == null) return null;
-        var plane = image.GetPlanes()![0];
-        var buffer = plane.Buffer!;
-        int w = image.Width, h = image.Height, rowStride = plane.RowStride, pixelStride = plane.PixelStride;
-        var pixels = new byte[w * h * 4];
-        var row = new byte[rowStride];
-        buffer.Rewind();
-        for (int y = 0; y < h; y++)
+        finally
         {
-            int len = Math.Min(rowStride, buffer.Remaining());
-            buffer.Get(row, 0, len);
-            if (pixelStride == 4) Buffer.BlockCopy(row, 0, pixels, y * w * 4, w * 4);
-            else for (int x = 0; x < w; x++) Buffer.BlockCopy(row, x * pixelStride, pixels, (y * w + x) * 4, 4);
+            newest?.Close();  // 无论成功失败，取出来的那张一定还回去
         }
-        return new Frame(w, h, pixels, Tartarus.Vision.PixelFormat.Rgba32);
     }
+
+    private int _grabFails;
 
     private void Save(bool manual)
     {
