@@ -20,6 +20,8 @@
 
 已安装的中文版有新版本时会自动提示，点一下即可更新。
 
+官方免费下载：https://github.com/womeizui119/kunshou-release/releases
+
 ## 中文版改了什么
 
 - 主界面精简：最上面一行红字直接写“该怎么走”，其他设置收进“⚙ 设置”里
@@ -37,7 +39,10 @@
 
 ## 协议
 
-MIT。原作品 Copyright (c) 2026 Artem Gurevich，详见 [LICENSE](LICENSE)。
+- 原作者的代码：MIT。原作品 Copyright (c) 2026 Artem Gurevich，详见 [LICENSE](LICENSE)。
+- 中文版作者的改动和新增部分（1.3.2 起）：**仅限个人免费使用，禁止商用、倒卖、改名再发布**，详见 [LICENSE-中文版.txt](LICENSE-中文版.txt)。
+
+本软件永久免费。如果你是花钱买的，你被骗了，请退款并举报卖家。官方QQ群：1055581575
 
 ## 备份
 

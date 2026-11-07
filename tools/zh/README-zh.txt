@@ -1,6 +1,10 @@
 困兽玩法推理 {version}
 
 《火炬之光：无限》“塔罗斯监狱”玩法的走法提示工具，以浮层形式画在游戏窗口上。
+
+★ 本软件永久免费，禁止商用和倒卖。如果你是花钱买的，你被骗了，请退款并举报卖家。
+★ 官方QQ群：1055581575    官方免费下载：https://github.com/womeizui119/kunshou-release/releases
+
 本软件只截取游戏窗口画面、读取游戏写在硬盘上的日志文件；不读写游戏内存、不注入、不替你按键或点击。每一步都由你自己操作。
 
 【使用方法】
@@ -19,15 +23,16 @@
 
 【自动更新】
 有新版本时，主窗口右下会出现更新按钮，点一下自动下载、校验并安装。
-更新来自发布页：https://github.com/womeizui119/tartarus-solver-cn/releases
+更新来自官方发布页：https://github.com/womeizui119/kunshou-release/releases
 
 【关于本软件】
 - 基于 glcoder（Artem Gurevich）的开源项目 TartarusSolver v{upstream} 修改，遵循 MIT 协议，
   原作者版权声明见 LICENSE.txt。识别、求解等核心功能都是原作者的成果。
+- 中文版作者的改动和新增部分仅限个人免费使用，禁止商用、倒卖、改名再发布，详见“许可说明-中文版.txt”。
 - 原版自带的中文界面翻译感谢 xingkinglb。
 - 本软件的改动：精简主界面、红字提示只显示最高收益的一步、更快的识别间隔、国服日志路径、窗口透明度等。
 - “保存问题报告”只保存在本机（%LOCALAPPDATA%\TartarusSolver\reports），不会上传。
 
 设置文件：%LOCALAPPDATA%\TartarusSolver\settings.json
 原项目：https://github.com/glcoder/TartarusSolver
-中文版：https://github.com/womeizui119/tartarus-solver-cn
+中文版：https://github.com/womeizui119/kunshou-release

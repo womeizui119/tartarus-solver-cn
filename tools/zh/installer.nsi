@@ -17,7 +17,7 @@ InstallDirRegKey HKCU "Software\${APPNAME}" "InstallDir"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 SetCompressorDictSize 64
-BrandingText "${APPNAME} ${VERSION}  ·  基于 glcoder/TartarusSolver（MIT）"
+BrandingText "${APPNAME} ${VERSION}  ·  永久免费 禁止倒卖  ·  QQ群 1055581575"
 
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey /LANG=2052 "ProductName" "${APPNAME}"
@@ -30,7 +30,7 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "原作者 Artem Gurevich（glcoder/
 !define MUI_UNICON "${SRC}\..\app.ico"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "安装 ${APPNAME} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "《火炬之光：无限》塔罗斯监狱玩法的走法提示工具。$\r$\n$\r$\n软件只截取游戏窗口画面、读取游戏日志，不碰游戏操作。$\r$\n$\r$\n点“下一步”继续。"
+!define MUI_WELCOMEPAGE_TEXT "《火炬之光：无限》塔罗斯监狱玩法的走法提示工具。$\r$\n$\r$\n软件只截取游戏窗口画面、读取游戏日志，不碰游戏操作。$\r$\n$\r$\n本软件永久免费，禁止商用和倒卖。如果你是花钱买的，你被骗了，请退款并举报卖家。$\r$\n官方QQ群：1055581575$\r$\n$\r$\n点“下一步”继续。"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${EXENAME}"
 !define MUI_FINISHPAGE_RUN_TEXT "现在运行 ${APPNAME}"
 !define MUI_FINISHPAGE_SHOWREADME ""

@@ -301,4 +301,5 @@
 需要反馈时，把最新的 report-*.zip 发给帮你排查的人即可。</value></data>
   <data name="Cn_WindowOpacity" xml:space="preserve"><value>窗口透明度</value></data>
   <data name="Cn_WindowOpacity_Tip" xml:space="preserve"><value>让本窗口半透明，可以叠在游戏上看</value></data>
+  <data name="Cn_FreeNotice" xml:space="preserve"><value>本软件永久免费，禁止商用和倒卖。如果你是花钱买的，你被骗了，请退款并举报卖家。官方QQ群：1055581575 · 免费下载：github.com/womeizui119/kunshou-release</value></data>
 </root>

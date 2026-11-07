@@ -22,4 +22,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARTARUS_SENTRY_DSN: ${{ secrets.TARTARUS_SENTRY_DSN }}
+          # 写 womeizui119/kunshou-release 的令牌（Settings → Secrets → Actions 里加 RELEASE_TOKEN）；没有就只发本仓库
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: python3 tools/zh/build_zh.py --publish

@@ -303,4 +303,5 @@ public static class Strings
     public static string Cn_ReportSaved => Get(nameof(Cn_ReportSaved));
     public static string Cn_WindowOpacity => Get(nameof(Cn_WindowOpacity));
     public static string Cn_WindowOpacity_Tip => Get(nameof(Cn_WindowOpacity_Tip));
+    public static string Cn_FreeNotice => Get(nameof(Cn_FreeNotice));
 }

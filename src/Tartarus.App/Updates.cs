@@ -17,7 +17,9 @@ namespace Tartarus.App;
 public static class Updates
 {
     // 中文版：从中文版自己的仓库更新（原版：glcoder/TartarusSolver）。
-    private const string Repo = "womeizui119/tartarus-solver-cn";
+    // 1.3.2 起先查只放安装包的公开发布仓库（源码仓库以后会设成私有，私有仓库的发布页玩家访问不到），
+    // 查不到再查原来的源码仓库；两个都有就用版本高的。
+    private static readonly string[] Repos = ["womeizui119/kunshou-release", "womeizui119/tartarus-solver-cn"];
 
     public sealed record Release(Version Version, string Page, string Notes, string? Asset, string? Url, long Size, string? Sha256);
 
@@ -57,6 +59,28 @@ public static class Updates
 
     /// <summary>The latest release, with this install's kind of zip when it has one with a digest.</summary>
     public static async Task<Release?> LatestAsync(CancellationToken ct = default)
+    {
+        Release? best = null;
+        Exception? failed = null;
+        foreach (var repo in Repos)
+        {
+            try
+            {
+                if (await LatestAsync(repo, ct) is { } r && (best == null || r.Version > best.Version)) best = r;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                // 发布仓库还没建好或源码仓库已设私有（404）：用另一个
+                AppLog.Write($"Update: {repo}: {ex.GetBaseException().Message}");
+                failed ??= ex;
+            }
+        }
+        if (best == null && failed != null) throw failed;
+        return best;
+    }
+
+    private static async Task<Release?> LatestAsync(string Repo, CancellationToken ct)
     {
         using var doc = JsonDocument.Parse(await Http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases/latest", ct));
         var root = doc.RootElement;

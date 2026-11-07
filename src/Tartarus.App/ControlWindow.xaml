@@ -58,6 +58,9 @@
       <TextBlock x:Name="CaptureStatus" TextWrapping="Wrap" Foreground="#C8CCD4" Text="{x:Static res:Strings.Status_NotCapturing}" />
     </DockPanel>
 
+    <!-- 中文版：免费声明，防倒卖（一直显示，不收进设置） -->
+    <TextBlock x:Name="FreeNotice" Margin="2,0,0,8" FontSize="11" Foreground="#E58FB0" TextWrapping="Wrap" Text="{x:Static res:Strings.Cn_FreeNotice}" />
+
     <!-- 底部按钮 -->
     <DockPanel>
       <Button x:Name="UpdateButton" DockPanel.Dock="Right" Margin="6,0,0,0" Visibility="Collapsed" Click="UpdateButton_Click" />

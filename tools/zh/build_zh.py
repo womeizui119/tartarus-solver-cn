@@ -29,7 +29,7 @@ RUNTIME_NEEDED = ("\n需要先安装 .NET 9 桌面运行时 (x64)：https://dotn
                   "和 Microsoft Visual C++ 运行库 (x64)：https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
                   "（不想装的话，请下载 -full 完整版，里面已自带。）\n")
 RUNTIME_BUNDLED = "\n完整版已自带 .NET 和 VC++ 运行库，无需额外安装。\n"
-MARKERS = ["当前推荐", "窗口透明度"]  # zh-Hans 资源包里应有的中文版文字
+MARKERS = ["当前推荐", "窗口透明度", "1055581575"]  # zh-Hans 资源包里应有的中文版文字
 REPO = "womeizui119/tartarus-solver-cn"
 PROPS = ROOT / "Directory.Build.props"
 
@@ -128,6 +128,7 @@ def package(version, zhver, bin_dir, out):
     template = (ROOT / "tools/zh/README-zh.txt").read_text(encoding="utf-8")
     replace = {"TartarusSolver.dll", "TartarusSolver.exe"} | {p.name for p in bin_dir.glob("Tartarus.*.dll")}
     license = (ROOT / "LICENSE").read_bytes()
+    zh_license = b"\xef\xbb\xbf" + (ROOT / "LICENSE-中文版.txt").read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8")
     made = []
     for suffix, note in [("", RUNTIME_NEEDED), ("-full", RUNTIME_BUNDLED)]:
         official = download(version, f"TartarusSolver-{version}{suffix}.zip", out / f"TartarusSolver-{version}{suffix}.zip")
@@ -150,6 +151,7 @@ def package(version, zhver, bin_dir, out):
                     data = src.read(info)
                 dst.writestr(zh_name(rel), data, zipfile.ZIP_DEFLATED)
             dst.writestr(f"{FOLDER}/LICENSE.txt", license, zipfile.ZIP_DEFLATED)
+            dst.writestr(f"{FOLDER}/{ZH_LICENSE}", zh_license, zipfile.ZIP_DEFLATED)
             dst.writestr(f"{FOLDER}/{COMPAT_EXE}", (bin_dir / "TartarusSolver.exe").read_bytes(), zipfile.ZIP_DEFLATED)
         check(official, target)
         made.append(target)
@@ -159,6 +161,7 @@ def package(version, zhver, bin_dir, out):
 FOLDER, EXE = "困兽玩法推理", "困兽玩法推理.exe"
 # 1.0.0 及更早的自动更新只认“塔罗斯监狱求解器.exe / TartarusSolver.exe”：包里多放一个 TartarusSolver.exe（同一个启动器），让它们也能升上来
 COMPAT_EXE = "TartarusSolver.exe"
+ZH_LICENSE = "许可说明-中文版.txt"
 
 
 def zh_name(rel):
@@ -174,7 +177,7 @@ def check(official, target):
     with zipfile.ZipFile(official) as a, zipfile.ZipFile(target) as b:
         na = {zh_name(i.filename.replace("\\", "/")) for i in a.infolist() if not i.is_dir()}
         nb = {i.filename.replace("\\", "/") for i in b.infolist() if not i.is_dir()}
-        na |= {f"{FOLDER}/LICENSE.txt", f"{FOLDER}/{COMPAT_EXE}"}
+        na |= {f"{FOLDER}/LICENSE.txt", f"{FOLDER}/{COMPAT_EXE}", f"{FOLDER}/{ZH_LICENSE}"}
         if na != nb:
             sys.exit(f"{target.name}：文件清单和官方包不一致：{na ^ nb}")
         dll = b.read(f"{FOLDER}/TartarusSolver.dll")
@@ -220,15 +223,31 @@ def installer(zhver, full_zip, out):
     return target
 
 
+RELEASE_REPO = "womeizui119/kunshou-release"  # 只放安装包的公开发布仓库（源码仓库设私有后，玩家从这里更新）
+
+
 def publish(zhver, version, files):
     notes = (f"困兽玩法推理 {zhver}，基于 glcoder/TartarusSolver v{version}（MIT 协议）修改。\n\n"
+             "**本软件永久免费，禁止商用和倒卖。如果你是花钱买的，你被骗了，请退款并举报卖家。官方QQ群：1055581575**\n\n"
              f"- 推荐：TartarusSolver-{zhver}-zh-setup.exe 安装程序，双击安装，自动建桌面快捷方式\n"
              f"- 绿色版：TartarusSolver-{zhver}-zh-full.zip（自带运行库，解压即用）\n"
              f"- 已装 .NET 9 桌面运行时的下载 TartarusSolver-{zhver}-zh.zip（体积小）\n\n"
              "已安装的中文版会自动提示更新。原作者：https://github.com/glcoder/TartarusSolver")
-    run("gh", "release", "create", f"v{zhver}", "-R", REPO, "--title", f"困兽玩法推理 {zhver}", "--notes", notes,
-        "--target", run("git", "rev-parse", "HEAD").stdout.strip(), *map(str, files))
-    print("已发布：", f"https://github.com/{REPO}/releases/tag/v{zhver}")
+    targets = [(REPO, os.environ.get("GH_TOKEN"), ["--target", run("git", "rev-parse", "HEAD").stdout.strip()])]
+    if os.environ.get("RELEASE_TOKEN"):  # 发布仓库要单独的令牌（本仓库自带的令牌只能写本仓库）
+        targets.append((RELEASE_REPO, os.environ["RELEASE_TOKEN"], []))
+    else:
+        print(f"没设 RELEASE_TOKEN，跳过发布仓库 {RELEASE_REPO}")
+    for repo, token, extra in targets:
+        env = dict(os.environ, GH_TOKEN=token or "")
+        if subprocess.run(["gh", "release", "view", f"v{zhver}", "-R", repo], env=env, capture_output=True).returncode == 0:
+            print(f"{repo} 已有 v{zhver}，跳过")
+            continue
+        r = subprocess.run(["gh", "release", "create", f"v{zhver}", "-R", repo, "--title", f"困兽玩法推理 {zhver}", "--notes", notes,
+                            *extra, *map(str, files)], env=env, text=True, capture_output=True)
+        if r.returncode != 0:
+            sys.exit(f"发布到 {repo} 失败：{r.stdout}{r.stderr}")
+        print("已发布：", f"https://github.com/{repo}/releases/tag/v{zhver}")
 
 
 def ocr_from_official(version, out):
