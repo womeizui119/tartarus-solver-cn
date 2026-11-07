@@ -87,6 +87,9 @@ public sealed class Pipeline : IDisposable
                 Trace?.Invoke($"推算完成：{h.Result.Playouts} 局模拟 · 推荐 {(h.Ranked.Count > 0 ? Names.Ranked(h, h.Ranked[0]) : "无")} · 各选项："
                     + string.Join("；", h.Ranked.Take(4).Select(a => $"{Names.Ranked(h, a)} 绮彩{a.Chromatic:0.00} 至臻{a.Ultimate:0.00}")));
                 if (_pendingKey != _settle.Committed) return;
+                // 算完时画面已经不是这一步了（玩家点了、画面在变）：先不显示，等画面回到这一步再由 ShowSettled 放出
+                // （2026-11-07 华为录屏：撤下的“吃这个”“选这张”算完后又被放回，挂在别的画面上）
+                if (_frameKey is { } now && !_settle.Matches(now)) return;
                 if (!MayShow(_pendingKey)) return;  // 刚撤下的局面：到时间由 ShowSettled 放出
                 _hint = h;
             }
@@ -141,12 +144,13 @@ public sealed class Pipeline : IDisposable
                 : r.Pick is { } p ? "pick|" + p.Kind + "|" + string.Join(",", p.Cards.Select(c => c.Id ?? c.Text))
                 : "none";
             bool changed = _settle.Feed(key);
+            _frameKey = key;
             // 画面换了种类（棋盘 ↔ 选刑具/珍藏 ↔ 没棋盘）连着 2 帧：旧提示马上撤下，不等新画面认定
             // （2026-11-06 华为录屏：连吃结束进“典狱长珍藏”，“取消 → 结束”在珍藏画面上挂了 10 秒）
             string kindNow = KindOf(key);
             if (!changed && _settle.Committed is { } committed && KindOf(committed) != kindNow)
             {
-                if (++_otherKind >= 2 && HasHint) Show(null, "识别中…", keepPending: true);
+                if (++_otherKind >= 1 && HasHint) Show(null, "识别中…", keepPending: true);
             }
             else _otherKind = 0;
             // 棋盘上卡牌变了（玩家点了卡、卡消失或换了）：旧提示这一帧就撤下，不等新局面认定（2026-11-07 华为：提示消失太慢）
@@ -181,6 +185,8 @@ public sealed class Pipeline : IDisposable
     }
 
     private int _otherKind;
+    /// <summary>最近一帧的局面键。</summary>
+    private volatile string? _frameKey;
     /// <summary>选刑具画面上推荐的那件（离开选刑具画面、回到棋盘后当作已选，记进整局记忆）。</summary>
     private string? _pickHint, _pendingPick;
     /// <summary>这一局按推荐选过的刑具（新的一局开头清空）。</summary>
@@ -349,6 +355,8 @@ public sealed class Pipeline : IDisposable
         if (r.Text?.Cards.Any(c => c.Meaning.Contains("hunt")) == true) _huntOffer = (board.Warden, board.Days, board.Clone(), r.Text);
         bool huntPick = r.Text?.RatwayPick == true && _huntOffer is { } hunt && hunt.Warden == board.Warden && hunt.Days == board.Days;
         if (r.Text?.RatwayPick == true && !huntPick) decision = true;
+        // 寻猎选目标（“请选择目标”）也是要做决定的一步（2026-11-07 华为录屏：选寻猎目标时一直“暂无”）
+        if (huntPick) decision = true;
         var here = board.Warden > 1 ? board[board.Warden] : null;
         bool endOnly = r.Text?.Cards is { Count: > 0 } cards && cards.All(c => c.Meaning is "end" || c.Meaning.EndsWith(" end"));
         if (decision && !consumeOnly && r.Text?.RatwayPick != true && here != null && here.Kind != CellKind.Inmate && !endOnly) decision = false;
