@@ -4,6 +4,11 @@ The version is in `Directory.Build.props` (`<Version>`), shown in the app's wind
 number goes up with every build handed out with fixes or changed behaviour, the middle one with a bigger set of new
 things.
 
+## 0.7.46 — 2026-11-06
+
+- No error report when Windows's capture service is already gone as the capture closes.
+- Bug reports name the processor and the graphics cards (model, memory, driver), to see what PCs the app has to run on.
+
 ## 0.7.45 — 2026-11-06
 
 - A Re-roll that brings the same three cards back no longer leaves the pick without a hint.
