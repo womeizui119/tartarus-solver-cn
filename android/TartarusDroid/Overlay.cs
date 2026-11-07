@@ -242,12 +242,12 @@ public sealed class Overlay
 }
 
 /// <summary>
-/// 渴瘾那样的提示：目标上方一个粉色圆角小标签（带发光和指向目标的小三角），写“点这张”“吃这个”“去这里”；
-/// 吃 / 寻猎接下来要点的牢房用小一号、半透明的“再点这里”。目标太靠上时标签放到目标下面、三角朝上。
+/// 粉红色发光方框（2026-11-07 玩家：标签不如方框好，方框改成粉红泛光）：框住推荐的卡牌 / 牢房 / 按钮。
+/// 外圈一层柔和的粉色光晕，中间一道亮粉实线；画在目标外沿外面一点，不压到要识别的内容。
 /// </summary>
 internal sealed class BoxView : View
 {
-    private readonly Paint _fill, _text, _fillNext, _textNext;
+    private readonly Paint _glow, _line;
     private readonly float _d;
     private IReadOnlyList<HintBox> _boxes = [];
     private float _sx = 1, _sy = 1;
@@ -256,14 +256,14 @@ internal sealed class BoxView : View
     {
         _d = ctx.Resources!.DisplayMetrics!.Density;
         SetLayerType(LayerType.Software, null);  // 发光（阴影）要软件绘制
-        _fill = new Paint(PaintFlags.AntiAlias) { Color = Color.Rgb(255, 79, 154) };
-        _fill.SetShadowLayer(10 * _d, 0, 0, Color.Argb(220, 255, 79, 154));
-        _text = new Paint(PaintFlags.AntiAlias) { Color = Color.White, TextSize = 15 * _d, TextAlign = Paint.Align.Center };
-        _text.SetTypeface(Typeface.DefaultBold);
-        _fillNext = new Paint(PaintFlags.AntiAlias) { Color = Color.Argb(200, 255, 79, 154) };
-        _fillNext.SetShadowLayer(6 * _d, 0, 0, Color.Argb(160, 255, 79, 154));
-        _textNext = new Paint(PaintFlags.AntiAlias) { Color = Color.White, TextSize = 12 * _d, TextAlign = Paint.Align.Center };
-        _textNext.SetTypeface(Typeface.DefaultBold);
+        // 光晕：粗一点、半透明，带大范围阴影
+        _glow = new Paint(PaintFlags.AntiAlias) { Color = Color.Argb(150, 255, 92, 168), StrokeWidth = 6 * _d };
+        _glow.SetStyle(Paint.Style.Stroke);
+        _glow.SetShadowLayer(14 * _d, 0, 0, Color.Argb(230, 255, 60, 150));
+        // 实线：亮粉
+        _line = new Paint(PaintFlags.AntiAlias) { Color = Color.Rgb(255, 120, 190), StrokeWidth = 2.5f * _d };
+        _line.SetStyle(Paint.Style.Stroke);
+        _line.SetShadowLayer(4 * _d, 0, 0, Color.Rgb(255, 79, 154));
     }
 
     public void Set(IReadOnlyList<HintBox> boxes, float sx, float sy)
@@ -276,41 +276,12 @@ internal sealed class BoxView : View
     protected override void OnDraw(Canvas canvas)
     {
         base.OnDraw(canvas);
+        float pad = 4 * _d, r = 10 * _d;
         foreach (var b in _boxes)
         {
-            var fill = b.Dashed ? _fillNext : _fill;
-            var text = b.Dashed ? _textNext : _text;
-            float l = b.X0 * _sx, r = b.X1 * _sx, top = b.Y0 * _sy, bottom = b.Y1 * _sy;
-            float cx = (l + r) / 2, cy = (top + bottom) / 2;
-            float tw = text.MeasureText(b.Label);
-            float padX = 10 * _d, h = text.TextSize + 10 * _d, w = tw + 2 * padX, tri = 7 * _d, gap = 2 * _d;
-            int side = b.Side;
-            if (side == 0 && top - h - tri - gap < 4 * _d) side = 1;   // 上面放不下就放下面
-            RectF pill = side switch
-            {
-                0 => new RectF(cx - w / 2, top - gap - tri - h, cx + w / 2, top - gap - tri),
-                1 => new RectF(cx - w / 2, bottom + gap + tri, cx + w / 2, bottom + gap + tri + h),
-                2 => new RectF(l - gap - tri - w, cy - h / 2, l - gap - tri, cy + h / 2),
-                _ => new RectF(r + gap + tri, cy - h / 2, r + gap + tri + w, cy + h / 2),
-            };
-            if (side <= 1)
-            {
-                float shift = Math.Max(0, 4 * _d - pill.Left) - Math.Max(0, pill.Right - (Width - 4 * _d));
-                pill.Offset(shift, 0);
-            }
-            canvas.DrawRoundRect(pill, 6 * _d, 6 * _d, fill);
-            using var path = new Android.Graphics.Path();
-            switch (side)
-            {
-                case 0: path.MoveTo(cx - tri, pill.Bottom - 1); path.LineTo(cx + tri, pill.Bottom - 1); path.LineTo(cx, pill.Bottom + tri); break;
-                case 1: path.MoveTo(cx - tri, pill.Top + 1); path.LineTo(cx + tri, pill.Top + 1); path.LineTo(cx, pill.Top - tri); break;
-                case 2: path.MoveTo(pill.Right - 1, cy - tri); path.LineTo(pill.Right - 1, cy + tri); path.LineTo(pill.Right + tri, cy); break;
-                default: path.MoveTo(pill.Left + 1, cy - tri); path.LineTo(pill.Left + 1, cy + tri); path.LineTo(pill.Left - tri, cy); break;
-            }
-            path.Close();
-            canvas.DrawPath(path, fill);
-            var fm = text.GetFontMetrics();
-            canvas.DrawText(b.Label, pill.CenterX(), pill.CenterY() - (fm!.Ascent + fm.Descent) / 2, text);
+            var rect = new RectF(b.X0 * _sx - pad, b.Y0 * _sy - pad, b.X1 * _sx + pad, b.Y1 * _sy + pad);
+            canvas.DrawRoundRect(rect, r, r, _glow);
+            canvas.DrawRoundRect(rect, r, r, _line);
         }
     }
 }

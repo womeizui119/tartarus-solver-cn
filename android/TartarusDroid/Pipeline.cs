@@ -183,6 +183,24 @@ public sealed class Pipeline : IDisposable
     private int _otherKind;
     /// <summary>选刑具画面上推荐的那件（离开选刑具画面、回到棋盘后当作已选，记进整局记忆）。</summary>
     private string? _pickHint, _pendingPick;
+    /// <summary>这一局按推荐选过的刑具（新的一局开头清空）。</summary>
+    private readonly List<string> _runPicks = [];
+
+    /// <summary>
+    /// 新的一局：上一局的目标进度、目标完成、绮彩数、算过的结果都清掉。
+    /// </summary>
+    private void NewRun()
+    {
+        _progress.Clear();
+        _objectiveDone = false;
+        _chroma = 0;
+        _chromaCand = -1;
+        _lastDays = null;
+        _runPicks.Clear();
+        _run.NewRun();
+        lock (_gate) _cache.Clear();
+        Trace?.Invoke("新的一局");
+    }
     /// <summary>撤下提示时认定的那个局面，和它的提示最早什么时候能再放出来（新认出的局面不受限，马上显示）。</summary>
     private string? _hideKey;
     private DateTime _hideUntil;
@@ -298,14 +316,16 @@ public sealed class Pipeline : IDisposable
         }
         var live = _live?.Invoke();
         if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
-        if (board.Days is int nd && _lastDays is int od && nd > od) { _progress.Clear(); _chroma = 0; _objectiveDone = false; lock (_gate) _cache.Clear(); }  // 剩余天数变多：新的一局
+        if (board.Days is int nd && _lastDays is int od && nd > od) NewRun();  // 剩余天数变多：新的一局（开局刚选的刑具还在 _pendingPick 里，下面才记上，不会被清掉）
         _run.Days(board.Days);
-        if (_pendingPick != null && board.Days != null)
+        if (_pendingPick != null)
         {
-            _run.Picked(_pendingPick);
+            if (!_runPicks.Contains(_pendingPick)) _runPicks.Add(_pendingPick);
             Trace?.Invoke("记下刚选的刑具：" + _pendingPick);
             _pendingPick = null;
         }
+        // 这一局选过的刑具每次都补进整局记忆（整局记忆因换局清空时也不丢；2026-11-07 华为：开局选的捕兽夹被清掉）
+        foreach (var picked in _runPicks) _run.Picked(picked);
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
         // 刑具栏和绮彩数：用整局记住的，不只看这一帧（被挡住、动画、没认出都沿用之前的）
@@ -399,7 +419,7 @@ public sealed class Pipeline : IDisposable
         // （2026-11-07 荣耀：新一局第一次选刑具在上一局最后的棋盘上算）
         var liveRun = _live?.Invoke();
         bool newRun = pick.Kind != PickRead.Treasure && (under?.Days == 0 || liveRun is { FromStart: true, Day: 0, InstrumentPicks: <= 1 });
-        if (newRun) { under = null; _lastDays = null; }
+        if (newRun) { under = null; NewRun(); }
         if (under == null) under = EditableSandbox.Empty();
         else
         {
@@ -481,7 +501,9 @@ public sealed class Pipeline : IDisposable
         if (dim || read == _chroma) { if (!dim) { _chromaCand = -1; _chromaTimes = 0; } return _chroma; }
         _chromaTimes = read == _chromaCand ? _chromaTimes + 1 : 1;
         _chromaCand = read;
-        int need = read > _chroma ? (read - _chroma <= 2 ? 4 : 20) : 12;
+        // 一局里绮彩只会变多：读到比现在少的一律不认（换局时清零）。2026-11-07 华为：0→2→0、3→6→8→7→0 来回变
+        if (read < _chroma) return _chroma;
+        int need = read - _chroma <= 2 ? 4 : 20;
         if (_chromaTimes >= need)
         {
             Trace?.Invoke($"绮彩数 {_chroma} → {read}");

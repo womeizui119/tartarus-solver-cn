@@ -65,7 +65,9 @@ public static class GameObservation
             o.Objective = objective;
             // 中文客户端写“已完成”（2026-11-06 华为录屏：第 5 天就完成了“牢门之后”，手机一直当成 8/10 没完成，整局推算都在凑开牢房）
             o.ObjectiveDone = text.ObjectiveProgress?.Contains("Complete", StringComparison.OrdinalIgnoreCase) == true
-                || text.ObjectiveProgress?.Replace(" ", "") is { } zh && (zh.Contains("完成") || zh.Contains("已完"));  // 折行时读成“已完 / 成”
+                // 只认“已完成”（折行时读成“已完 / 成”）。不能只看“完成”：“弱肉强食”的目标写的是“累计完成 4 次吃”
+                // （2026-11-07 华为：第 1 天就当成目标完成了，整局不去凑“吃”）
+                || text.ObjectiveProgress?.Replace(" ", "").Replace("\n", "") is { } zh && zh.Contains("已完");
             if (text.Progress is { } p) o.ObjectiveProgress = p.Done;
         }
         return o;
