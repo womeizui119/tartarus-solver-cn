@@ -32,6 +32,7 @@ public sealed class LogReader : IDisposable
     private int _lines, _s16, _samples;
     private bool _reported, _askedShizuku, _grantTried;
     private DateTime _since;
+    private string? _lastFound;
 
     /// <summary>浮窗菜单里显示的状态：“日志：已连接（文件）” 等。</summary>
     public string State { get; private set; } = "日志：未连接（只看画面）";
@@ -166,8 +167,14 @@ public sealed class LogReader : IDisposable
     {
         string list = RunShell("find /sdcard/Android/data -maxdepth 10 -path '*Saved/Logs/*.log' 2>/dev/null | while read f; do echo \"$(stat -c %Y \"$f\") $(stat -c %s \"$f\") $f\"; done | sort -rn | head -20");
         var rows = list.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Split(' ', 3)).Where(p => p.Length == 3).ToList();
-        if (rows.Count > 0) Saver.Log(_ctx, "日志：找到的日志文件（修改时间 大小 路径）：\n" + string.Join("\n", rows.Select(r => $"  {r[0]} {r[1]} {r[2]}")));
         var files = rows.Select(r => r[2].Trim()).ToList();
+        // 找到的文件只在变了的时候写进记录（3.2 每 30 秒写一遍，记录被撑到几千行）
+        string joined = string.Join("|", files);
+        if (rows.Count > 0 && joined != _lastFound)
+        {
+            _lastFound = joined;
+            Saver.Log(_ctx, "日志：找到的日志文件（修改时间 大小 路径）：\n" + string.Join("\n", rows.Select(r => $"  {r[0]} {r[1]} {r[2]}")));
+        }
         return files.FirstOrDefault(f => f.Contains("orch", StringComparison.OrdinalIgnoreCase) || f.Contains("TLI", StringComparison.Ordinal) || f.Contains("UE_game", StringComparison.Ordinal))
             ?? files.FirstOrDefault();
     }
@@ -219,7 +226,7 @@ public sealed class LogReader : IDisposable
                     + (run == null ? "没认出" : $"第 {run.Day}/{run.MaxDays} 天，今天吃过={run.ConsumedToday}，吃了 {run.Consumes} 次，目标完成={run.ObjectiveDone}，绮彩≥{run.ChromaticAtLeast}"));
                 if (_s16 == 0) Set($"日志：{source}里还没有塔罗斯的日志", connected: false);
             }
-            if (checkNewest != null && DateTime.Now - lastCheck > TimeSpan.FromSeconds(30))
+            if (checkNewest != null && DateTime.Now - lastCheck > TimeSpan.FromSeconds(120))
             {
                 lastCheck = DateTime.Now;
                 if (checkNewest()) break;

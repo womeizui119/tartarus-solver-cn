@@ -82,10 +82,12 @@ public sealed class Pipeline : IDisposable
                     return;
                 }
                 _cache[_pendingKey] = h;
+                if (h.Ranked.Count > 0 && h.Ranked[0].Action.Kind == ActionKind.PickInstrument)
+                    _pickHint = Tartarus.Rules.GameData.Info((Tartarus.Rules.Instrument)h.Ranked[0].Action.Arg).Id;
                 Trace?.Invoke($"推算完成：{h.Result.Playouts} 局模拟 · 推荐 {(h.Ranked.Count > 0 ? Names.Ranked(h, h.Ranked[0]) : "无")} · 各选项："
                     + string.Join("；", h.Ranked.Take(4).Select(a => $"{Names.Ranked(h, a)} 绮彩{a.Chromatic:0.00} 至臻{a.Ultimate:0.00}")));
                 if (_pendingKey != _settle.Committed) return;
-                if (DateTime.Now - _tapAt < TimeSpan.FromSeconds(1)) return;  // 刚点过：等画面变，由 ShowSettled 放出
+                if (!MayShow(_pendingKey)) return;  // 刚撤下的局面：到时间由 ShowSettled 放出
                 _hint = h;
             }
             SetStatus($"已识别 · {LastScanMs:0} 毫秒");
@@ -166,6 +168,8 @@ public sealed class Pipeline : IDisposable
                 return;
             }
             Trace?.Invoke("认定局面：" + key.Replace("\n", " "));
+            // 离开选刑具画面：推荐的那件当作已选（手机刑具栏常读成“?”，2026-11-07 荣耀：整局推算都以为一件刑具都没有）
+            if (b != null && _pickHint != null) { _pendingPick = _pickHint; _pickHint = null; }
             if (b != null) OnBoard(r, b);
             else if (r.Pick is { } pick) OnPick(pick, key);
             else Clear($"没看到塔罗斯监狱棋盘（{Zh.Reason(r.Reason)}）");
@@ -177,20 +181,34 @@ public sealed class Pipeline : IDisposable
     }
 
     private int _otherKind;
-    private DateTime _tapAt;
+    /// <summary>选刑具画面上推荐的那件（离开选刑具画面、回到棋盘后当作已选，记进整局记忆）。</summary>
+    private string? _pickHint, _pendingPick;
+    /// <summary>撤下提示时认定的那个局面，和它的提示最早什么时候能再放出来（新认出的局面不受限，马上显示）。</summary>
+    private string? _hideKey;
+    private DateTime _hideUntil;
 
     /// <summary>
-    /// 玩家手指碰了屏幕：提示马上撤下（不等识别，2026-11-07：提示消失太慢）。点完画面变了就按新局面重新给；
+    /// 玩家手指碰了屏幕：提示马上撤下（不等识别，2026-11-07：提示消失太慢）。点完画面变了就按新局面马上给；
     /// 1 秒后画面还是原来那样（点在空处），原来的提示再出来。
     /// </summary>
-    /// <summary>日志里刚有新动静（走了一步、点了卡、换了天）：和手指点屏幕一样，提示马上撤下。</summary>
-    public void LogActivity() => UserTapped();
+    public void UserTapped() => HideFor(TimeSpan.FromSeconds(1));
 
-    public void UserTapped()
+    /// <summary>
+    /// 日志里刚有新动静（走了一步、点了卡、换了天）：提示马上撤下，原来那个局面的提示 2.5 秒内不再放回来
+    /// （游戏切画面有动画，1 秒后屏幕看着还是老样子，3.2 会把旧提示又放回来，2026-11-07 荣耀“选完还停在上一次的提示”）。
+    /// </summary>
+    public void LogActivity() => HideFor(TimeSpan.FromSeconds(2.5));
+
+    private void HideFor(TimeSpan span)
     {
-        _tapAt = DateTime.Now;
+        var until = DateTime.Now + span;
+        if (_hideKey == _settle.Committed && until < _hideUntil) return;
+        (_hideKey, _hideUntil) = (_settle.Committed, until);
         if (HasHint) Show(null, "识别中…", keepPending: true);
     }
+
+    /// <summary>这个局面的提示现在能不能显示：刚撤下的那个局面要等到时间，别的（新认出的）马上能显示。</summary>
+    private bool MayShow(string? key) => key != _hideKey || DateTime.Now >= _hideUntil;
     private byte[]? _lastThumb;
     private int _reused;
 
@@ -237,7 +255,7 @@ public sealed class Pipeline : IDisposable
         lock (_gate)
         {
             if (_pendingKey == null || _pendingKey != _settle.Committed) return;
-            if (DateTime.Now - _tapAt < TimeSpan.FromSeconds(1)) return;
+            if (!MayShow(_pendingKey)) return;
             if (_held != null && DateTime.Now >= _heldUntil) { show = _held; _held = null; _cache[_pendingKey] = show; }
             else if (_hint == null && _held == null && _cache.TryGetValue(_pendingKey, out var c)) show = c;
             if (show == null) return;
@@ -282,6 +300,12 @@ public sealed class Pipeline : IDisposable
         if (live != null) board.Days = live.RemainingDays;  // 日志里的天数比画面上认的准
         if (board.Days is int nd && _lastDays is int od && nd > od) { _progress.Clear(); _chroma = 0; _objectiveDone = false; lock (_gate) _cache.Clear(); }  // 剩余天数变多：新的一局
         _run.Days(board.Days);
+        if (_pendingPick != null && board.Days != null)
+        {
+            _run.Picked(_pendingPick);
+            Trace?.Invoke("记下刚选的刑具：" + _pendingPick);
+            _pendingPick = null;
+        }
         board.Days ??= _lastDays;
         if (board.Days is int d) _lastDays = d;
         // 刑具栏和绮彩数：用整局记住的，不只看这一帧（被挡住、动画、没认出都沿用之前的）
@@ -371,6 +395,11 @@ public sealed class Pipeline : IDisposable
         // 审讯室 / 典狱长珍藏：在当前局面上算。只有这一局还没读到过棋盘（开局第一次选刑具）才用空棋盘
         // （2026-11-06 实机：中途进审讯室时天数一帧没认出（=0）就被换成了第 1 天的空棋盘，推荐全错）
         var under = _lastBoard?.Clone();
+        // 新的一局开头选刑具：上一个棋盘是上一局最后一天（剩 0 天），或日志说这局还没选过刑具 → 用空棋盘
+        // （2026-11-07 荣耀：新一局第一次选刑具在上一局最后的棋盘上算）
+        var liveRun = _live?.Invoke();
+        bool newRun = pick.Kind != PickRead.Treasure && (under?.Days == 0 || liveRun is { FromStart: true, Day: 0, InstrumentPicks: <= 1 });
+        if (newRun) { under = null; _lastDays = null; }
         if (under == null) under = EditableSandbox.Empty();
         else
         {
@@ -397,6 +426,7 @@ public sealed class Pipeline : IDisposable
             _pendingKey = key;
             _held = null;
             _cache.TryGetValue(key, out cached);
+            if (!MayShow(key)) cached = null;  // 刚撤下的局面：算过也先不放，到时间由 ShowSettled 放出
             _hint = cached;
         }
         if (cached != null)

@@ -121,6 +121,16 @@ public sealed class RunMemory
     /// (and is remembered); one that can't be read now (a tooltip over it: <see cref="SlotReader.Hidden"/>, the
     /// network unsure: <see cref="SlotReader.Unknown"/>, or read empty) shows what was read there before.
     /// </summary>
+    /// <summary>
+    /// 中文版（手机）：刚在选刑具画面上选了这件（按推荐）。手机上刑具栏常读成“?”，这里先记上；
+    /// 之后刑具栏连着几次清楚地读成别的，照常换掉（见下面 ChangeAfter）。
+    /// </summary>
+    public void Picked(string id)
+    {
+        if (_held.Contains(id) || _held.Count >= 2) return;
+        _held.Add(id);
+    }
+
     public IReadOnlyList<string> Instruments(IReadOnlyList<string> read)
     {
         _kept.Clear();
